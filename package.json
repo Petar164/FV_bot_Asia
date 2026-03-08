@@ -1,0 +1,42 @@
+{
+  "name": "fashionvoid-bot",
+  "version": "0.1.0",
+  "description": "FashionVoid Asia + EU Monitor — Electron desktop app",
+  "main": "src/main.js",
+  "scripts": {
+    "start":   "electron .",
+    "dev":     "vite --config vite.config.js",
+    "build":   "vite build && electron-builder",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react":        "^18.3.1",
+    "react-dom":    "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron":             "^31.0.0",
+    "electron-builder":     "^24.13.3",
+    "vite":                 "^5.3.1"
+  },
+  "build": {
+    "appId":       "com.fashionvoid.bot",
+    "productName": "FashionVoid Bot",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
