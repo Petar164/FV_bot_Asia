@@ -38,3 +38,9 @@ python-dotenv==1.0.1
 # Web dashboard
 fastapi>=0.111.0
 uvicorn>=0.29.0
+
+# AI — keyword expansion and vision filter
+openai>=1.30.0
+
+# Translation — DeepL primary
+deepl>=1.17.0
