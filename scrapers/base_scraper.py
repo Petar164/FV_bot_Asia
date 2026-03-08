@@ -52,6 +52,7 @@ class BaseScraper(ABC):
     PLATFORM: str = ""
     CURRENCY: str = ""
     BASE_URL: str = ""
+    NEEDS_TRANSLATION: bool = True   # EU scrapers override to False
 
     # Default browser-like headers to reduce bot detection
     _DEFAULT_HEADERS: dict = {
@@ -193,17 +194,21 @@ class BaseScraper(ABC):
                 )
                 continue
 
-            # ── Translation ───────────────────────────────────────────
-            try:
-                translated = await self.translator.translate(listing["title"])
-            except Exception as exc:
-                logger.warning(f"[{self.PLATFORM}] Translation failed: {exc}")
-                translated = listing["title"]
+            # ── Translation (Asia platforms only) ─────────────────────
+            if self.NEEDS_TRANSLATION:
+                try:
+                    translated = await self.translator.translate(listing["title"])
+                except Exception as exc:
+                    logger.warning(f"[{self.PLATFORM}] Translation failed: {exc}")
+                    translated = listing["title"]
+            else:
+                translated = listing.get("translated_title") or listing["title"]
 
             # ── Suspicious price check ────────────────────────────────
             is_suspicious = False
+            en_terms = keyword_group.get("terms_en") or keyword_group.get("terms", [])
             if price_eur:
-                for term in keyword_group.get("terms", []):
+                for term in en_terms:
                     avg = self.db.get_rolling_average(group_name, term, platform)
                     if avg and price_eur < threshold * avg:
                         is_suspicious = True
@@ -225,7 +230,7 @@ class BaseScraper(ABC):
             # ── Persist & update rolling average ──────────────────────
             self.db.insert_listing(enriched)
             if price_eur:
-                for term in keyword_group.get("terms", []):
+                for term in en_terms:
                     self.db.update_rolling_average(group_name, term, platform, price_eur)
 
             new_listings.append(enriched)
@@ -260,14 +265,17 @@ class BaseScraper(ABC):
         Called by the scheduler.  Iterates keyword groups, runs search(),
         post-processes results, and fires notifications for new listings.
         Returns total count of new listings found.
+
+        Supports both the legacy flat platforms list and the new
+        { eu: [...], asia: [...] } schema.
         """
         total_new = 0
 
         for kw_group in self._kw_config:
-            if self.PLATFORM not in kw_group.get("platforms", []):
+            if not self._platform_selected(kw_group):
                 continue
 
-            for term in kw_group.get("terms", []):
+            for term in self._get_search_terms(kw_group):
                 try:
                     raw = await self.search(term, kw_group)
                     new_listings = await self.process_listings(raw, kw_group)
@@ -285,3 +293,39 @@ class BaseScraper(ABC):
                     )
 
         return total_new
+
+    def _platform_selected(self, kw_group: dict) -> bool:
+        """
+        Return True if this scraper's platform is selected in the keyword group.
+        Handles both the legacy flat list and the new {eu, asia} dict schema.
+        """
+        platforms_cfg = kw_group.get("platforms", [])
+        if isinstance(platforms_cfg, dict):
+            all_platforms = (
+                platforms_cfg.get("eu", []) + platforms_cfg.get("asia", [])
+            )
+        else:
+            all_platforms = platforms_cfg
+        return self.PLATFORM in all_platforms
+
+    def _get_search_terms(self, kw_group: dict) -> list[str]:
+        """
+        Return the search terms appropriate for this platform.
+
+        Legacy schema  → returns kw_group['terms']
+        New schema     → EU platforms use terms_en only;
+                         Asia platforms use all language terms combined.
+        """
+        # Legacy flat list
+        if "terms" in kw_group:
+            return kw_group["terms"]
+
+        eu_platforms = {"vinted", "vestiaire"}
+        terms = list(kw_group.get("terms_en", []))
+
+        if self.PLATFORM not in eu_platforms:
+            terms += kw_group.get("terms_jp", [])
+            terms += kw_group.get("terms_kr", [])
+            terms += kw_group.get("terms_cn", [])
+
+        return terms

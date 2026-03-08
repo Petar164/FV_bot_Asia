@@ -3,6 +3,8 @@ from .yahoo_auctions import YahooAuctionsScraper
 from .rakuma import RakumaScraper
 from .bunjang import BunjangScraper
 from .xianyu import XianyuScraper
+from .vinted import VintedScraper
+from .vestiaire import VestiaireScraper
 
 __all__ = [
     "MercariJPScraper",
@@ -10,13 +12,17 @@ __all__ = [
     "RakumaScraper",
     "BunjangScraper",
     "XianyuScraper",
+    "VintedScraper",
+    "VestiaireScraper",
 ]
 
 # Registry used by main.py to instantiate scrapers by name
 SCRAPER_REGISTRY = {
-    "mercari_jp": MercariJPScraper,
+    "mercari_jp":     MercariJPScraper,
     "yahoo_auctions": YahooAuctionsScraper,
-    "rakuma": RakumaScraper,
-    "bunjang": BunjangScraper,
-    "xianyu": XianyuScraper,
+    "rakuma":         RakumaScraper,
+    "bunjang":        BunjangScraper,
+    "xianyu":         XianyuScraper,
+    "vinted":         VintedScraper,
+    "vestiaire":      VestiaireScraper,
 }
