@@ -119,7 +119,13 @@ async def _scan_job(
     """
     Single scheduled scan cycle for one platform.
     Updates stats_store in place for the live dashboard.
+    Exits immediately if the run gate is cleared (bot paused).
     """
+    gate = getattr(scraper, "_run_gate", None)
+    if gate is not None and not gate.is_set():
+        logger.debug(f"[{platform_name}] Paused — scan skipped")
+        return
+
     start = datetime.utcnow()
     try:
         count = await scraper.run(notifications)
@@ -174,11 +180,19 @@ async def main(args) -> None:
     else:
         target_platforms = _active_platforms(config)
 
+    # ── Run gate — asyncio.Event that controls pause/resume ───────────────
+    # Set   = running normally
+    # Clear = paused; scrapers check this between search terms and stop early
+    run_gate = asyncio.Event()
+    run_gate.set()
+
     scrapers: dict[str, object] = {}
     for name in target_platforms:
         cls = SCRAPER_REGISTRY.get(name)
         if cls:
-            scrapers[name] = cls(config, db, translator, fx, proxy)
+            s = cls(config, db, translator, fx, proxy)
+            s._run_gate = run_gate
+            scrapers[name] = s
         else:
             logger.warning(f"Unknown platform: {name}")
 
@@ -229,7 +243,7 @@ async def main(args) -> None:
     scheduler.start()
 
     # ── Dashboard ─────────────────────────────────────────────────────
-    dashboard_init(db, stats_store, config, scheduler=scheduler, config_path=args.config)
+    dashboard_init(db, stats_store, config, scheduler=scheduler, config_path=args.config, run_gate=run_gate)
 
     url = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}"
     console.print(f"\n[bold white]Dashboard →[/bold white] [dim]{url}[/dim]")

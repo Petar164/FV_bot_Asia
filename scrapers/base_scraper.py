@@ -268,6 +268,10 @@ class BaseScraper(ABC):
 
         Supports both the legacy flat platforms list and the new
         { eu: [...], asia: [...] } schema.
+
+        Respects self._run_gate (asyncio.Event): if the gate is cleared the
+        scan stops cleanly between search terms so the pause button takes
+        effect within seconds rather than waiting for the whole cycle.
         """
         total_new = 0
 
@@ -276,6 +280,12 @@ class BaseScraper(ABC):
                 continue
 
             for term in self._get_search_terms(kw_group):
+                # ── Pause gate ────────────────────────────────────────
+                gate = getattr(self, "_run_gate", None)
+                if gate is not None and not gate.is_set():
+                    logger.debug(f"[{self.PLATFORM}] Paused — stopping scan early")
+                    return total_new
+
                 try:
                     raw = await self.search(term, kw_group)
                     new_listings = await self.process_listings(raw, kw_group)

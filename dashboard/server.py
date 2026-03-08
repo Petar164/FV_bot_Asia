@@ -46,6 +46,7 @@ _scheduler = None
 _config_path: str | None = None
 _current_mode: str = "nonstop"
 _revert_task: asyncio.Task | None = None
+_run_gate = None   # asyncio.Event injected from main.py
 
 # ── Interval presets (seconds) ────────────────────────────────────────────────
 INTERVAL_PRESETS = {
@@ -217,13 +218,19 @@ async def api_stream():
 async def api_scraping_status():
     """Return whether scraper is paused and the current interval mode."""
     paused = False
-    if _scheduler:
+    if _run_gate is not None:
+        paused = not _run_gate.is_set()
+    elif _scheduler:
         paused = _scheduler.state == 2  # STATE_PAUSED = 2
     return {"paused": paused, "mode": _current_mode}
 
 
 @app.post("/api/scraping/pause")
 async def api_scrape_pause():
+    """Pause immediately: clear run gate (stops in-flight scans between terms)
+    and pause the scheduler (prevents new scans from starting)."""
+    if _run_gate is not None:
+        _run_gate.clear()
     if _scheduler:
         _scheduler.pause()
     return {"ok": True, "paused": True}
@@ -231,6 +238,9 @@ async def api_scrape_pause():
 
 @app.post("/api/scraping/resume")
 async def api_scrape_resume():
+    """Resume: set the run gate and resume the scheduler."""
+    if _run_gate is not None:
+        _run_gate.set()
     if _scheduler:
         _scheduler.resume()
     return {"ok": True, "paused": False}
@@ -253,6 +263,12 @@ async def api_scrape_interval(request: Request):
         for job in _scheduler.get_jobs():
             if job.id.startswith("scan_"):
                 job.reschedule(trigger=IntervalTrigger(seconds=interval_s))
+
+    # Selecting an interval mode implicitly resumes the bot
+    if _run_gate is not None:
+        _run_gate.set()
+    if _scheduler:
+        _scheduler.resume()
 
     # Cancel any existing revert timer
     if _revert_task and not _revert_task.done():
@@ -298,11 +314,12 @@ async def api_update_config(request: Request):
 
 # ── Init ──────────────────────────────────────────────────────────────────────
 
-def init(db, stats_store: dict, config: dict, scheduler=None, config_path: str = None):
+def init(db, stats_store: dict, config: dict, scheduler=None, config_path: str = None, run_gate=None):
     """Called from main.py to inject shared state."""
-    global _db, _stats_store, _config, _scheduler, _config_path
+    global _db, _stats_store, _config, _scheduler, _config_path, _run_gate
     _db = db
     _stats_store = stats_store
     _config = config
     _scheduler = scheduler
     _config_path = config_path
+    _run_gate = run_gate
