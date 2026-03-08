@@ -259,6 +259,13 @@
     }
     .globe-pin.suspicious { border-color: rgba(255,136,0,.35); }
     .globe-pin.suspicious:hover { border-color: rgba(255,136,0,.65); }
+    /* EU platform pins — distinct accent colour (amber-gold) */
+    .globe-pin.eu-pin { border-color: rgba(255,210,100,.22); }
+    .globe-pin.eu-pin:hover { border-color: rgba(255,210,100,.55); }
+    .pin-region-label {
+      font-size: 6px; letter-spacing: 2px; text-transform: uppercase;
+      color: rgba(255,210,100,.45); margin-bottom: 3px;
+    }
     .pin-flag { font-size: 11px; line-height: 1; margin-bottom: 3px; }
     .pin-country {
       font-size: 8px; font-weight: 700;
@@ -635,6 +642,10 @@ let activeCountry = null, suspOnly = false, showVat = false;
 let _pinObjects = {}; // { country: { group, cardEl, data } }
 
 const DEFAULT_COUNTRIES = [
+  // ── EU platforms ─────────────────────────────────────────────────────────
+  {country:'vinted',     name:'Vinted',     flag:'🛍', lon:3.80,     lat:50.85, total:0, suspicious:0, platforms:['vinted'],     region:'EU', platformLabel:'EU — Vinted'},
+  {country:'vestiaire',  name:'Vestiaire',  flag:'✦',  lon:5.20,     lat:51.20, total:0, suspicious:0, platforms:['vestiaire'],  region:'EU', platformLabel:'EU — Vestiaire Collective'},
+  // ── Asia platforms ────────────────────────────────────────────────────────
   {country:'japan', name:'Japan',       flag:'🇯🇵', lon:139.6917, lat:35.6895, total:0, suspicious:0, platforms:['mercari_jp','yahoo_auctions','rakuma'], timezone:'Asia/Tokyo',    tzLabel:'JST'},
   {country:'korea', name:'South Korea', flag:'🇰🇷', lon:126.9780, lat:37.5665, total:0, suspicious:0, platforms:['bunjang'],                               timezone:'Asia/Seoul',    tzLabel:'KST'},
   {country:'china', name:'China',       flag:'🇨🇳', lon:116.4074, lat:39.9042, total:0, suspicious:0, platforms:['xianyu'],                                timezone:'Asia/Shanghai', tzLabel:'CST'},
@@ -655,15 +666,29 @@ function buildPinCard(d) {
   return el;
 }
 function _renderPinCard(el, d) {
-  el.className = 'globe-pin' + (d.suspicious > 0 ? ' suspicious' : '');
-  el.innerHTML =
-    `<div class="pin-flag">${d.flag}</div>` +
-    `<div class="pin-country">${d.name.toUpperCase()}</div>` +
-    (d.timezone ? `<div class="pin-time" data-tz="${d.timezone}" data-lbl="${d.tzLabel||''}">—</div>` : '') +
-    `<div class="pin-total">${d.total}</div>` +
-    `<div class="pin-label">listings found</div>` +
-    (d.suspicious > 0 ? `<div class="pin-susp">⚠ ${d.suspicious} suspicious</div>` : '') +
-    `<div class="pin-plats">${d.platforms.join('\n')}</div>`;
+  const isEU = d.region === 'EU';
+  el.className = 'globe-pin' + (isEU ? ' eu-pin' : '') + (d.suspicious > 0 ? ' suspicious' : '');
+  if (isEU) {
+    // EU platform card — no timezone, show platform label + listing count
+    el.innerHTML =
+      `<div class="pin-flag">${d.flag}</div>` +
+      `<div class="pin-country">${d.name.toUpperCase()}</div>` +
+      `<div class="pin-region-label">EU</div>` +
+      `<div class="pin-total">${d.total}</div>` +
+      `<div class="pin-label">listings found</div>` +
+      (d.suspicious > 0 ? `<div class="pin-susp">⚠ ${d.suspicious} suspicious</div>` : '') +
+      `<div class="pin-plats">${d.platformLabel || d.platforms.join('\n')}</div>`;
+  } else {
+    // Asia platform card — timezone + translated listings
+    el.innerHTML =
+      `<div class="pin-flag">${d.flag}</div>` +
+      `<div class="pin-country">${d.name.toUpperCase()}</div>` +
+      (d.timezone ? `<div class="pin-time" data-tz="${d.timezone}" data-lbl="${d.tzLabel||''}">—</div>` : '') +
+      `<div class="pin-total">${d.total}</div>` +
+      `<div class="pin-label">listings found</div>` +
+      (d.suspicious > 0 ? `<div class="pin-susp">⚠ ${d.suspicious} suspicious</div>` : '') +
+      `<div class="pin-plats">${d.platforms.join('\n')}</div>`;
+  }
   el.onclick = () => openCountry(d);
 }
 
