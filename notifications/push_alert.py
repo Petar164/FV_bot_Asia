@@ -56,7 +56,7 @@ class PushAlert:
         tags = self._build_tags(listing)
 
         headers = {
-            "Title": title.encode("utf-8"),
+            "Title": title,
             "Priority": self._priority,
             "Tags": ",".join(tags),
             "Click": listing.get("url", ""),
@@ -73,10 +73,7 @@ class PushAlert:
                 response = await client.post(
                     self._endpoint,
                     content=body.encode("utf-8"),
-                    headers={
-                        k: v if isinstance(v, str) else v.decode()
-                        for k, v in headers.items()
-                    },
+                    headers=headers,
                 )
                 response.raise_for_status()
 
