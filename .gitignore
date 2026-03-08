@@ -44,8 +44,9 @@ playwright-traces/
 .pytest_cache/
 
 # Sessions (cookies, tokens — runtime, never commit)
-sessions/*/
-!sessions/*/.gitkeep
+sessions/**/*.json
+sessions/**/*.pkl
+sessions/**/*.bin
 
 # Node
 node_modules/
