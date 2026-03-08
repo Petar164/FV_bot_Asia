@@ -1,4 +1,4 @@
-# FashionVoid Asia Monitor
+# fashionvoid Market Monitor
 
 > Automated archive fashion sourcing across Japanese, Korean, and Chinese resale platforms.
 > Targets rare pieces — instant alerts the moment something underpriced surfaces.
@@ -173,7 +173,7 @@ python main.py
 
 # Or systemd — create /etc/systemd/system/fashionvoid.service:
 [Unit]
-Description=FashionVoid Asia Monitor
+Description=fashionvoid Market Monitor
 After=network.target
 
 [Service]

@@ -1,7 +1,7 @@
 {
   "name": "fashionvoid-bot",
   "version": "0.1.0",
-  "description": "FashionVoid Asia + EU Monitor — Electron desktop app",
+  "description": "fashionvoid Market Monitor — Electron desktop app",
   "main": "src/main.js",
   "scripts": {
     "start":   "electron .",
@@ -21,7 +21,7 @@
   },
   "build": {
     "appId":       "com.fashionvoid.bot",
-    "productName": "FashionVoid Bot",
+    "productName": "fashionvoid Market Monitor",
     "directories": {
       "output": "release"
     },

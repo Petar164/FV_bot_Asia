@@ -1,7 +1,7 @@
 """
 fashionvoid-bot · main.py
 ─────────────────────────────────────────────────────────────────────────────
-Entry point for the FashionVoid Asia Monitor Bot.
+Entry point for the fashionvoid Market Monitor bot.
 
 Boots the scheduler, initialises all scrapers and notification channels,
 and renders a live Rich dashboard in the terminal.
@@ -93,7 +93,7 @@ console = Console()
 
 _BANNER = """
 [dim]─────────────────────────────────────────────────────────[/dim]
-[bold white]  F A S H I O N V O I D[/bold white]  [dim]Asia Monitor[/dim]
+[bold white]  F A S H I O N V O I D[/bold white]  [dim]Market Monitor[/dim]
 [dim]─────────────────────────────────────────────────────────[/dim]
 """
 
@@ -147,7 +147,7 @@ async def main(args) -> None:
     _configure_logging(config)
 
     console.print(_BANNER)
-    logger.info("FashionVoid Asia Monitor starting…")
+    logger.info("fashionvoid Market Monitor starting…")
 
     # ── Shared services ───────────────────────────────────────────────
     db = Database(config["database"]["path"])
@@ -264,7 +264,7 @@ async def main(args) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="FashionVoid Asia Monitor Bot",
+        description="fashionvoid Market Monitor",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
