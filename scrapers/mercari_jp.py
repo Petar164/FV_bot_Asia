@@ -201,6 +201,7 @@ class MercariJPScraper(BaseScraper):
         layer but anonymous search works with a plausible client hint set.
         """
         return {
+            "Authorization": "Bearer anonymous",
             "Origin": "https://jp.mercari.com",
             "Referer": "https://jp.mercari.com/",
             "X-Platform": "web",

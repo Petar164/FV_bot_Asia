@@ -27,7 +27,7 @@ class BunjangScraper(BaseScraper):
     CURRENCY = "KRW"
     BASE_URL = "https://m.bunjang.co.kr"
 
-    _API_ENDPOINT = "https://api.bunjang.co.kr/api/1/find_it/search.json"
+    _API_ENDPOINT = "https://api.bunjang.co.kr/api/2/find_it/v2/products"
     _ITEM_URL = "https://m.bunjang.co.kr/products/{id}"
     _IMAGE_BASE = "https://media.bunjang.co.kr/images/{path}"
 
@@ -44,9 +44,7 @@ class BunjangScraper(BaseScraper):
                         "q": keyword,
                         "n": page_size,
                         "page": page,
-                        "stat": "1",       # on sale only
-                        "order": "recent",
-                        "req_ref": "search",
+                        "order": "date",   # newest first
                     }
                     response = await self._get(client, self._API_ENDPOINT, params=params)
                     data = response.json()
@@ -54,7 +52,7 @@ class BunjangScraper(BaseScraper):
                     logger.error(f"[{self.PLATFORM}] API error (page {page}): {exc}")
                     break
 
-                items = data.get("list", [])
+                items = data.get("list", data.get("products", []))
                 if not items:
                     break
 

@@ -85,7 +85,7 @@ class VintedScraper(BaseScraper):
                 proxies=proxies,
                 timeout=httpx.Timeout(20.0, connect=10.0),
                 follow_redirects=True,
-                http2=True,
+                http2=False,   # disable HTTP/2 to avoid compression encoding issues
             ) as client:
                 resp = await client.get(_SEARCH_URL, params=params)
                 resp.raise_for_status()
@@ -94,7 +94,9 @@ class VintedScraper(BaseScraper):
                 self._cookies = dict(resp.cookies)
                 self._save_cookies(self._cookies)
 
-                data = resp.json()
+                # Use content bytes — json.loads handles encoding detection
+                import json as _json
+                data = _json.loads(resp.content)
 
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code in (401, 403):
