@@ -236,26 +236,28 @@
     .globe-pin {
       background: rgba(10,14,18,.90);
       border: 1px solid rgba(122,225,255,.18);
-      padding: 6px 9px 5px;
+      padding: 4px 6px 3px;
       cursor: pointer;
       font-family: 'Courier New', Courier, monospace;
-      min-width: 88px;
+      min-width: 62px;
       user-select: none;
-      transition: border-color .18s, transform .18s, background .18s;
+      /* scale driven by JS via --pin-scale CSS var (zoom-responsive) */
+      transform: scale(var(--pin-scale, 1));
+      transform-origin: bottom center;
+      transition: border-color .18s, background .18s;
       pointer-events: all;
       position: relative;
       backdrop-filter: blur(4px);
     }
     .globe-pin::before {
       content: '';
-      position: absolute; bottom: -6px; left: 12px;
-      width: 1px; height: 6px;
+      position: absolute; bottom: -5px; left: 10px;
+      width: 1px; height: 5px;
       background: rgba(122,225,255,.3);
     }
     .globe-pin:hover {
       border-color: rgba(122,225,255,.55);
       background: rgba(12,20,28,.97);
-      transform: translateY(-2px);
     }
     .globe-pin.suspicious { border-color: rgba(255,136,0,.35); }
     .globe-pin.suspicious:hover { border-color: rgba(255,136,0,.65); }
@@ -263,35 +265,35 @@
     .globe-pin.eu-pin { border-color: rgba(255,210,100,.22); }
     .globe-pin.eu-pin:hover { border-color: rgba(255,210,100,.55); }
     .pin-region-label {
-      font-size: 6px; letter-spacing: 2px; text-transform: uppercase;
-      color: rgba(255,210,100,.45); margin-bottom: 3px;
+      font-size: 5px; letter-spacing: 2px; text-transform: uppercase;
+      color: rgba(255,210,100,.45); margin-bottom: 2px;
     }
-    .pin-flag { font-size: 11px; line-height: 1; margin-bottom: 3px; }
+    .pin-flag { font-size: 9px; line-height: 1; margin-bottom: 2px; }
     .pin-country {
-      font-size: 8px; font-weight: 700;
-      letter-spacing: 2px; text-transform: uppercase;
-      color: #c0d8e8; margin-bottom: 3px;
+      font-size: 6px; font-weight: 700;
+      letter-spacing: 1.5px; text-transform: uppercase;
+      color: #c0d8e8; margin-bottom: 2px;
     }
     .pin-total {
-      font-size: 16px; font-weight: 300; letter-spacing: -0.5px;
-      color: #7AE1FF; line-height: 1; margin-bottom: 2px;
+      font-size: 13px; font-weight: 300; letter-spacing: -0.5px;
+      color: #7AE1FF; line-height: 1; margin-bottom: 1px;
     }
     .pin-label {
-      font-size: 6px; letter-spacing: 1.2px; text-transform: uppercase;
-      color: #2e4050; margin-bottom: 4px;
+      font-size: 5px; letter-spacing: 1px; text-transform: uppercase;
+      color: #2e4050; margin-bottom: 3px;
     }
     .pin-susp {
-      font-size: 7px; letter-spacing: 1px; text-transform: uppercase;
-      color: #ff8800; margin-bottom: 3px;
+      font-size: 6px; letter-spacing: 1px; text-transform: uppercase;
+      color: #ff8800; margin-bottom: 2px;
     }
     .pin-plats {
-      font-size: 6px; letter-spacing: 0.8px; text-transform: uppercase;
-      color: #1e3040; line-height: 1.5;
+      font-size: 5px; letter-spacing: 0.6px; text-transform: uppercase;
+      color: #1e3040; line-height: 1.4;
     }
     .pin-time {
-      font-size: 9px; letter-spacing: 0.5px;
+      font-size: 8px; letter-spacing: 0.4px;
       color: rgba(122,225,255,.55); font-family: 'Courier New', Courier, monospace;
-      font-variant-numeric: tabular-nums; margin-bottom: 3px; line-height: 1;
+      font-variant-numeric: tabular-nums; margin-bottom: 2px; line-height: 1;
     }
 
     /* ── Right sidebar ──────────────────────────────────────── */
@@ -875,7 +877,10 @@ async function initGlobe() {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping    = true;
   controls.enablePan        = false;
-  controls.enableZoom       = false;
+  controls.enableZoom       = true;
+  controls.zoomSpeed        = 0.6;
+  controls.minDistance      = 1.4;
+  controls.maxDistance      = 4.0;
   controls.autoRotate       = true;
   controls.autoRotateSpeed  = 0.4;
   controls.dampingFactor    = 0.06;
@@ -982,6 +987,11 @@ async function initGlobe() {
     glitchPass.uniforms.uSeed.value   = (glitchPass.uniforms.uSeed.value + dt*0.13) % 1e3;
     composer.render(dt);
     labelRenderer.render(scene, camera);
+    // Scale pin cards inversely with camera distance:
+    // closer zoom → slightly larger cards; further → smaller
+    const dist     = camera.position.length();
+    const pinScale = Math.min(1.2, Math.max(0.7, 2.2 / dist));
+    el.style.setProperty('--pin-scale', pinScale.toFixed(3));
   }
   animate();
 
