@@ -1,0 +1,88 @@
+keywords:
+- group: Dior Homme Hedi
+  terms:
+  - dior homme
+  - ディオールオム
+  - 디올옴므
+  - dior homme hedi
+  size_filter:
+  - '46'
+  - '48'
+  - S
+  - M
+  price_ceiling_eur: 400
+  suspicious_threshold: 0.25
+  platforms:
+  - mercari_jp
+  - yahoo_auctions
+  - rakuma
+  - bunjang
+  - xianyu
+- group: SLP Hedi
+  terms:
+  - saint laurent
+  - サンローラン
+  - 생로랑
+  - YSL hedi
+  - slp hedi
+  size_filter:
+  - '46'
+  - '48'
+  - S
+  - M
+  price_ceiling_eur: 350
+  suspicious_threshold: 0.25
+  platforms:
+  - mercari_jp
+  - yahoo_auctions
+  - bunjang
+  - rakuma
+  - xianyu
+proxies:
+  enabled: false
+  rotation_url: YOUR_PROXY_ROTATION_ENDPOINT
+  username: YOUR_PROXY_USERNAME
+  password: YOUR_PROXY_PASSWORD
+  static_list:
+  - http://user:pass@proxy1.example.com:8080
+  - http://user:pass@proxy2.example.com:8080
+alerts:
+  email:
+    enabled: false
+    smtp_host: smtp.gmail.com
+    smtp_port: 587
+    sender: YOUR_EMAIL@gmail.com
+    recipient: YOUR_EMAIL@gmail.com
+    password: YOUR_GMAIL_APP_PASSWORD
+  sms:
+    enabled: false
+    twilio_sid: YOUR_TWILIO_ACCOUNT_SID
+    twilio_token: YOUR_TWILIO_AUTH_TOKEN
+    from_number: +1XXXXXXXXXX
+    to_number: +YOUR_NUMBER
+    whatsapp_enabled: false
+    whatsapp_from: whatsapp:+14155238886
+    whatsapp_to: whatsapp:+YOUR_NUMBER
+  push:
+    enabled: true
+    ntfy_topic: fashionvoid-alerts
+    ntfy_server: https://ntfy.sh
+    priority: high
+intervals_seconds:
+  mercari_jp: 45
+  yahoo_auctions: 60
+  rakuma: 60
+  bunjang: 90
+  xianyu: 120
+currency:
+  api_key: YOUR_EXCHANGERATE_API_KEY
+  base: EUR
+  cache_ttl_seconds: 3600
+translate:
+  api_key: YOUR_GOOGLE_TRANSLATE_API_KEY
+  target_language: en
+database:
+  path: fashionvoid.db
+logging:
+  level: INFO
+  log_file: fashionvoid.log

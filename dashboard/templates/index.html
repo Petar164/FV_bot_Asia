@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>FashionVoid · Asia Monitor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #060606;
+      --surface: #0c0c0c;
+      --border:  #1a1a1a;
+      --border2: #252525;
+      --text:    #d0d0d0;
+      --dim:     #555;
+      --mute:    #2a2a2a;
+      --accent:  #e8e8e8;
+      --green:   #00e87a;
+      --red:     #ff3535;
+      --orange:  #ff8800;
+      --ls:      220px;
+      --rs:      400px;
+    }
+
+    html, body {
+      width:100%; height:100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 13px;
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Grid shell ─────────────────────────────────────────── */
+    #shell {
+      display: grid;
+      grid-template-rows: 48px 1fr;
+      grid-template-columns: var(--ls) 1fr;
+      grid-template-areas: "hd hd" "ls globe";
+      height: 100vh;
+      transition: grid-template-columns .4s cubic-bezier(.4,0,.2,1);
+    }
+    #shell.rs-open {
+      grid-template-columns: var(--ls) 1fr var(--rs);
+      grid-template-areas: "hd hd hd" "ls globe rs";
+    }
+
+    /* ── Header ─────────────────────────────────────────────── */
+    #hd {
+      grid-area: hd;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 20px 0 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg); z-index: 50;
+    }
+    .logo { display: flex; align-items: baseline; gap: 10px; }
+    .logo-a { font-size: 11px; letter-spacing: 5px; text-transform: uppercase; color: var(--accent); font-weight: 500; }
+    .logo-b { font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: var(--dim); }
+    #hd-r { display: flex; align-items: center; gap: 14px; }
+    .live-b { display: flex; align-items: center; gap: 6px; font-size: 9px; letter-spacing: 2px; text-transform: uppercase; color: var(--dim); }
+    .ldot { width:5px; height:5px; border-radius:50%; background: var(--green); animation: blink 2.4s ease-in-out infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.15} }
+    #clock { font-size:10px; letter-spacing:1px; color:var(--dim); font-variant-numeric:tabular-nums; }
+    #tod-badge { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); padding:3px 8px; border:1px solid var(--border2); border-radius:2px; }
+
+    /* ── City timezone strip ─────────────────────────────────── */
+    #tz-strip {
+      display: flex; align-items: stretch;
+      border: 1px solid var(--border2); border-radius: 2px; overflow: hidden;
+    }
+    .tz-city {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 3px 11px; border-right: 1px solid var(--border);
+      gap: 2px;
+    }
+    .tz-city:last-child { border-right: none; }
+    .tz-label {
+      font-size: 7px; letter-spacing: 2px; text-transform: uppercase;
+      color: var(--dim); line-height: 1;
+    }
+    .tz-time {
+      font-size: 10px; letter-spacing: 0.5px; color: #7AE1FF;
+      font-family: 'Courier New', Courier, monospace;
+      font-variant-numeric: tabular-nums; line-height: 1;
+    }
+
+    /* ── Scraping control button ─────────────────────────────── */
+    .sc-wrap { position: relative; }
+    .sc-btn {
+      display: flex; align-items: center; gap: 7px;
+      padding: 5px 11px; border: 1px solid var(--border2); border-radius: 2px;
+      background: transparent; color: var(--dim); cursor: pointer;
+      font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+      transition: all .15s; white-space: nowrap; font-family: inherit;
+    }
+    .sc-btn:hover { border-color: #444; color: var(--text); }
+    .sc-btn.paused { border-color: var(--red); color: var(--red); }
+    .sc-btn.paused .sc-dot { background: var(--red); animation: none; }
+    .sc-dot { width:5px; height:5px; border-radius:50%; background: var(--green); animation: blink 2.4s ease-in-out infinite; flex-shrink:0; }
+
+    /* Dropdown */
+    .sc-drop {
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: #0e0e0e; border: 1px solid var(--border2);
+      min-width: 190px; z-index: 300;
+      opacity: 0; pointer-events: none;
+      transform: translateY(-4px);
+      transition: opacity .15s, transform .15s;
+    }
+    .sc-drop.open { opacity: 1; pointer-events: all; transform: translateY(0); }
+
+    .sc-drop-hd {
+      padding: 9px 13px 7px;
+      font-size: 7px; letter-spacing: 3px; text-transform: uppercase; color: var(--mute);
+      border-bottom: 1px solid var(--border);
+    }
+    .sc-item {
+      position: relative;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 9px 13px; cursor: pointer;
+      font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim);
+      transition: color .12s, background .12s;
+    }
+    .sc-item:hover { color: var(--accent); background: rgba(255,255,255,.03); }
+    .sc-item.active { color: var(--accent); }
+    .sc-item.active::before {
+      content: ''; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+      width: 2px; height: 14px; background: var(--green);
+    }
+    .sc-arr { font-size: 8px; color: var(--mute); transition: color .12s; }
+    .sc-item:hover .sc-arr { color: var(--accent); }
+
+    /* Duration submenu */
+    .sc-sub {
+      position: absolute; left: 100%; top: -1px;
+      background: #0e0e0e; border: 1px solid var(--border2);
+      min-width: 160px; z-index: 301;
+      opacity: 0; pointer-events: none;
+      transform: translateX(-4px);
+      transition: opacity .12s, transform .12s;
+    }
+    .sc-sub.open { opacity: 1; pointer-events: all; transform: translateX(0); }
+    .sc-sub-hd {
+      padding: 8px 12px 6px;
+      font-size: 7px; letter-spacing: 3px; text-transform: uppercase; color: var(--mute);
+      border-bottom: 1px solid var(--border);
+    }
+    .sc-sub-item {
+      padding: 8px 12px;
+      font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim);
+      cursor: pointer; transition: color .12s, background .12s;
+    }
+    .sc-sub-item:hover { color: var(--accent); background: rgba(255,255,255,.03); }
+
+    /* Edit keywords button */
+    .kw-edit-btn {
+      display: flex; align-items: center; gap: 6px;
+      padding: 5px 11px; border: 1px solid var(--border2); border-radius: 2px;
+      background: transparent; color: var(--dim); cursor: pointer;
+      font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+      transition: all .15s; font-family: inherit;
+    }
+    .kw-edit-btn:hover { border-color: #444; color: var(--text); }
+
+    /* ── Left sidebar ────────────────────────────────────────── */
+    #ls {
+      grid-area: ls;
+      background: var(--surface); border-right: 1px solid var(--border);
+      overflow-y: auto; padding: 20px 0;
+      display: flex; flex-direction: column; gap: 26px;
+    }
+    #ls::-webkit-scrollbar { width:3px; }
+    #ls::-webkit-scrollbar-thumb { background:#1e1e1e; }
+
+    .sec { padding: 0 16px; }
+    .sec-lbl { font-size:8px; letter-spacing:3px; text-transform:uppercase; color:var(--mute); margin-bottom:10px; }
+
+    .pr { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border); }
+    .pr:last-child { border-bottom:none; }
+    .pr-l { display:flex; align-items:center; gap:7px; }
+    .pr-flag { font-size:13px; }
+    .pr-name { font-size:11px; color:var(--dim); }
+    .pr-r { display:flex; align-items:center; gap:7px; }
+    .pr-cnt { font-size:10px; color:var(--mute); font-variant-numeric:tabular-nums; }
+    .sdot { width:5px; height:5px; border-radius:50%; background:var(--mute); transition:background .3s; }
+    .sdot.ok { background:var(--green); }
+    .sdot.err { background:var(--red); }
+
+    .sr { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); }
+    .sr:last-child { border-bottom:none; }
+    .sr-k { font-size:10px; color:var(--dim); }
+    .sr-v { font-size:13px; color:var(--accent); font-variant-numeric:tabular-nums; }
+    .sr-v.w { color:var(--red); }
+
+    .kr { padding:7px 0; border-bottom:1px solid var(--border); }
+    .kr:last-child { border-bottom:none; }
+    .kr-name { font-size:11px; color:var(--text); margin-bottom:3px; }
+    .kr-meta { font-size:9px; color:var(--mute); }
+
+    /* ── Globe ──────────────────────────────────────────────── */
+    #globe-wrap {
+      grid-area: globe; position:relative; overflow:hidden;
+      background: radial-gradient(ellipse at 58% 50%, #06080f 0%, #000 62%);
+    }
+    #gc { position:absolute; inset:0; }
+
+    /* Scan-line sweep — subtle tech feel */
+    #globe-scan {
+      position:absolute; inset:0; pointer-events:none; z-index:4;
+      background: linear-gradient(to bottom,
+        transparent 0%, rgba(160,210,255,0.022) 50%, transparent 100%);
+      background-size: 100% 140px;
+      animation: scan 14s linear infinite;
+    }
+    @keyframes scan {
+      from { background-position: 0 -140px; }
+      to   { background-position: 0 110vh; }
+    }
+
+    /* Ambient rim glow overlay */
+    #globe-glow {
+      position:absolute; inset:0; pointer-events:none; z-index:3;
+      background: radial-gradient(ellipse 70% 70% at 58% 50%,
+        transparent 45%, rgba(80,120,200,0.07) 70%, transparent 85%);
+    }
+
+    #hint {
+      position:absolute; bottom:18px; left:50%; transform:translateX(-50%);
+      font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--mute);
+      pointer-events:none; transition:opacity .8s; z-index:6;
+    }
+
+    /* ── Globe pin cards ─────────────────────────────────────── */
+    .globe-pin {
+      background: rgba(10,14,18,.90);
+      border: 1px solid rgba(122,225,255,.18);
+      padding: 6px 9px 5px;
+      cursor: pointer;
+      font-family: 'Courier New', Courier, monospace;
+      min-width: 88px;
+      user-select: none;
+      transition: border-color .18s, transform .18s, background .18s;
+      pointer-events: all;
+      position: relative;
+      backdrop-filter: blur(4px);
+    }
+    .globe-pin::before {
+      content: '';
+      position: absolute; bottom: -6px; left: 12px;
+      width: 1px; height: 6px;
+      background: rgba(122,225,255,.3);
+    }
+    .globe-pin:hover {
+      border-color: rgba(122,225,255,.55);
+      background: rgba(12,20,28,.97);
+      transform: translateY(-2px);
+    }
+    .globe-pin.suspicious { border-color: rgba(255,136,0,.35); }
+    .globe-pin.suspicious:hover { border-color: rgba(255,136,0,.65); }
+    .pin-flag { font-size: 11px; line-height: 1; margin-bottom: 3px; }
+    .pin-country {
+      font-size: 8px; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase;
+      color: #c0d8e8; margin-bottom: 3px;
+    }
+    .pin-total {
+      font-size: 16px; font-weight: 300; letter-spacing: -0.5px;
+      color: #7AE1FF; line-height: 1; margin-bottom: 2px;
+    }
+    .pin-label {
+      font-size: 6px; letter-spacing: 1.2px; text-transform: uppercase;
+      color: #2e4050; margin-bottom: 4px;
+    }
+    .pin-susp {
+      font-size: 7px; letter-spacing: 1px; text-transform: uppercase;
+      color: #ff8800; margin-bottom: 3px;
+    }
+    .pin-plats {
+      font-size: 6px; letter-spacing: 0.8px; text-transform: uppercase;
+      color: #1e3040; line-height: 1.5;
+    }
+    .pin-time {
+      font-size: 9px; letter-spacing: 0.5px;
+      color: rgba(122,225,255,.55); font-family: 'Courier New', Courier, monospace;
+      font-variant-numeric: tabular-nums; margin-bottom: 3px; line-height: 1;
+    }
+
+    /* ── Right sidebar ──────────────────────────────────────── */
+    #rs {
+      grid-area: rs;
+      background: var(--surface); border-left:1px solid var(--border);
+      display:flex; flex-direction:column; overflow:hidden;
+    }
+    #rs-hd {
+      padding:16px 18px 12px; border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between; flex-shrink:0;
+    }
+    #rs-country { font-size:9px; letter-spacing:3px; text-transform:uppercase; color:var(--dim); }
+    #rs-count { font-size:20px; font-weight:300; color:var(--accent); margin-top:3px; }
+    #rs-x {
+      width:30px; height:30px; border:1px solid var(--border2); border-radius:2px;
+      background:transparent; color:var(--dim); cursor:pointer; font-size:14px;
+      display:flex; align-items:center; justify-content:center; transition:all .15s; flex-shrink:0;
+    }
+    #rs-x:hover { border-color:var(--accent); color:var(--accent); }
+    #rs-ctrl {
+      padding:10px 18px; border-bottom:1px solid var(--border);
+      display:flex; align-items:center; justify-content:space-between; flex-shrink:0; gap:8px;
+    }
+    .fp { padding:4px 9px; border:1px solid var(--border2); border-radius:2px; background:transparent; color:var(--dim); cursor:pointer; font-size:8px; letter-spacing:1.5px; text-transform:uppercase; transition:all .15s; }
+    .fp:hover { border-color:#444; color:var(--text); }
+    .fp.on { border-color:var(--accent); color:var(--accent); }
+    .vw { display:flex; align-items:center; gap:7px; }
+    .vw label { font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); cursor:pointer; }
+    .tog { position:relative; width:30px; height:16px; cursor:pointer; }
+    .tog input { opacity:0; width:0; height:0; }
+    .tog-tr { position:absolute; inset:0; border-radius:8px; background:var(--mute); transition:background .2s; }
+    .tog input:checked + .tog-tr { background:#1e1e1e; border:1px solid #444; }
+    .tog-th { position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:var(--dim); transition:all .2s; }
+    .tog input:checked ~ .tog-th { left:16px; background:var(--accent); }
+    #rs-list { flex:1; overflow-y:auto; }
+    #rs-list::-webkit-scrollbar { width:3px; }
+    #rs-list::-webkit-scrollbar-thumb { background:#1e1e1e; }
+
+    /* ── Listing row ─────────────────────────────────────────── */
+    .lr { display:grid; grid-template-columns:66px 1fr; border-bottom:1px solid var(--border); text-decoration:none; color:inherit; transition:background .15s; }
+    .lr:hover { background:rgba(255,255,255,.018); }
+    .lr.sf { border-left:2px solid var(--orange); }
+    .lr-img { width:66px; height:66px; object-fit:cover; display:block; background:#0d0d0d; }
+    .lr-ph { width:66px; height:66px; background:#0d0d0d; display:flex; align-items:center; justify-content:center; color:var(--mute); font-size:8px; }
+    .lr-b { padding:9px 13px; display:flex; flex-direction:column; justify-content:space-between; min-width:0; }
+    .lr-top { display:flex; align-items:flex-start; justify-content:space-between; gap:4px; }
+    .lr-title { font-size:11px; color:var(--accent); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
+    .lr-plat { font-size:8px; letter-spacing:1px; text-transform:uppercase; color:var(--mute); flex-shrink:0; margin-top:1px; }
+    .lr-orig { font-size:9px; color:var(--dim); font-style:italic; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .lr-bot { display:flex; align-items:flex-end; justify-content:space-between; }
+    .lr-prices { display:flex; flex-direction:column; gap:1px; }
+    .lr-eur { font-size:15px; font-weight:300; color:var(--accent); line-height:1; }
+    .lr-op { font-size:9px; color:var(--dim); margin-left:5px; }
+    .lr-vat { font-size:9px; color:var(--dim); display:none; }
+    .lr-vat.show { display:block; }
+    .lr-vl { font-size:7px; letter-spacing:1px; text-transform:uppercase; color:var(--mute); margin-right:2px; }
+    .lr-lnk { font-size:8px; letter-spacing:2px; text-transform:uppercase; color:var(--dim); flex-shrink:0; transition:color .15s; }
+    .lr:hover .lr-lnk { color:var(--accent); }
+    .lr-stag { display:inline-block; padding:1px 4px; border:1px solid rgba(255,136,0,.25); border-radius:1px; font-size:7px; letter-spacing:1px; text-transform:uppercase; color:var(--orange); margin-top:2px; }
+    .rs-empty { padding:40px 18px; text-align:center; font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--mute); }
+
+    /* ── Keyword editor modal ────────────────────────────────── */
+    #kw-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.72);
+      z-index: 500; display: none; align-items: center; justify-content: center;
+    }
+    #kw-overlay.open { display: flex; }
+    #kw-modal {
+      background: #0c0c0c; border: 1px solid var(--border2);
+      width: 640px; max-height: 82vh;
+      display: flex; flex-direction: column;
+    }
+    #kw-modal-hd {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 22px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #kw-modal-hd h2 { font-size: 9px; letter-spacing: 4px; text-transform: uppercase; color: var(--accent); font-weight: 400; }
+    #kw-modal-x {
+      width: 28px; height: 28px; border: 1px solid var(--border2); border-radius: 2px;
+      background: transparent; color: var(--dim); cursor: pointer; font-size: 13px;
+      display: flex; align-items: center; justify-content: center; transition: all .15s;
+    }
+    #kw-modal-x:hover { border-color: var(--accent); color: var(--accent); }
+    #kw-modal-body { flex: 1; overflow-y: auto; padding: 20px 22px; display: flex; flex-direction: column; gap: 24px; }
+    #kw-modal-body::-webkit-scrollbar { width: 3px; }
+    #kw-modal-body::-webkit-scrollbar-thumb { background: #1e1e1e; }
+    #kw-modal-ft {
+      padding: 14px 22px; border-top: 1px solid var(--border); flex-shrink: 0;
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    .kw-group-card {
+      border: 1px solid var(--border2); padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
+    }
+    .kw-group-hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .kw-group-name {
+      flex: 1; background: transparent; border: none; border-bottom: 1px solid var(--border2);
+      color: var(--accent); font-size: 12px; font-family: inherit; padding: 3px 0; outline: none;
+      transition: border-color .15s;
+    }
+    .kw-group-name:focus { border-color: #444; }
+    .kw-del-btn {
+      padding: 4px 9px; border: 1px solid rgba(255,53,53,.2); border-radius: 2px;
+      background: transparent; color: var(--red); cursor: pointer; font-size: 7px;
+      letter-spacing: 2px; text-transform: uppercase; transition: all .15s; font-family: inherit;
+      flex-shrink: 0;
+    }
+    .kw-del-btn:hover { background: rgba(255,53,53,.08); }
+
+    .kw-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .kw-field { display: flex; flex-direction: column; gap: 5px; }
+    .kw-label { font-size: 7px; letter-spacing: 2.5px; text-transform: uppercase; color: var(--mute); }
+    .kw-inp, .kw-ta {
+      background: #0a0a0a; border: 1px solid var(--border2); color: var(--text);
+      font-size: 11px; font-family: inherit; padding: 7px 9px; outline: none;
+      transition: border-color .15s; width: 100%; border-radius: 1px;
+    }
+    .kw-inp:focus, .kw-ta:focus { border-color: #444; }
+    .kw-ta { resize: vertical; min-height: 80px; line-height: 1.6; }
+
+    .kw-add-btn {
+      padding: 8px 16px; border: 1px dashed var(--border2); border-radius: 2px;
+      background: transparent; color: var(--mute); cursor: pointer; font-size: 8px;
+      letter-spacing: 2px; text-transform: uppercase; transition: all .15s; font-family: inherit;
+      width: 100%; text-align: center;
+    }
+    .kw-add-btn:hover { border-color: #444; color: var(--dim); }
+
+    .kw-save-btn {
+      padding: 8px 22px; border: 1px solid var(--accent); border-radius: 2px;
+      background: transparent; color: var(--accent); cursor: pointer; font-size: 8px;
+      letter-spacing: 2px; text-transform: uppercase; transition: all .15s; font-family: inherit;
+    }
+    .kw-save-btn:hover { background: rgba(232,232,232,.06); }
+    .kw-save-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .kw-msg { font-size: 9px; color: var(--green); letter-spacing: 1px; margin-left: 4px; opacity: 0; transition: opacity .3s; }
+    .kw-msg.show { opacity: 1; }
+
+    /* Platforms checkboxes */
+    .kw-plats { display: flex; flex-wrap: wrap; gap: 6px; }
+    .kw-plat-cb { display: none; }
+    .kw-plat-lbl {
+      padding: 3px 8px; border: 1px solid var(--border2); border-radius: 2px;
+      font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim);
+      cursor: pointer; transition: all .15s; user-select: none;
+    }
+    .kw-plat-cb:checked + .kw-plat-lbl { border-color: var(--accent); color: var(--accent); }
+  </style>
+</head>
+<body>
+<div id="shell">
+
+  <!-- Header -->
+  <header id="hd">
+    <div class="logo">
+      <span class="logo-a">FashionVoid</span>
+      <span class="logo-b">·  Asia Monitor</span>
+    </div>
+    <div id="hd-r">
+      <span id="tod-badge">—</span>
+      <div class="live-b"><div class="ldot"></div>Live</div>
+
+      <!-- Keyword editor button -->
+      <button class="kw-edit-btn" onclick="openKwModal()">
+        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.2">
+          <path d="M1 7.5L2.5 9 9 2.5 7.5 1 1 7.5z"/>
+        </svg>
+        Keywords
+      </button>
+
+      <!-- Scraping control -->
+      <div class="sc-wrap">
+        <button class="sc-btn" id="sc-btn" onclick="toggleScrapePause()">
+          <div class="sc-dot" id="sc-dot"></div>
+          <span id="sc-label">NON-STOP</span>
+        </button>
+        <div class="sc-drop">
+          <div class="sc-drop-hd">Scan Interval</div>
+          <div class="sc-item" id="si-nonstop" data-mode="nonstop">
+            NON-STOP <span class="sc-arr">›</span>
+            <div class="sc-sub">
+              <div class="sc-sub-hd">Run for</div>
+              <div class="sc-sub-item" onclick="setInterval_('nonstop',null)">Until stopped</div>
+              <div class="sc-sub-item" onclick="setInterval_('nonstop',60)">1 hour</div>
+              <div class="sc-sub-item" onclick="setInterval_('nonstop',120)">2 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('nonstop',240)">4 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('nonstop',480)">8 hours</div>
+            </div>
+          </div>
+          <div class="sc-item" id="si-5min" data-mode="5min">
+            Every 5 min <span class="sc-arr">›</span>
+            <div class="sc-sub">
+              <div class="sc-sub-hd">Run for</div>
+              <div class="sc-sub-item" onclick="setInterval_('5min',null)">Until stopped</div>
+              <div class="sc-sub-item" onclick="setInterval_('5min',30)">30 minutes</div>
+              <div class="sc-sub-item" onclick="setInterval_('5min',60)">1 hour</div>
+              <div class="sc-sub-item" onclick="setInterval_('5min',120)">2 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('5min',240)">4 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('5min',480)">8 hours</div>
+            </div>
+          </div>
+          <div class="sc-item" id="si-15min" data-mode="15min">
+            Every 15 min <span class="sc-arr">›</span>
+            <div class="sc-sub">
+              <div class="sc-sub-hd">Run for</div>
+              <div class="sc-sub-item" onclick="setInterval_('15min',null)">Until stopped</div>
+              <div class="sc-sub-item" onclick="setInterval_('15min',30)">30 minutes</div>
+              <div class="sc-sub-item" onclick="setInterval_('15min',60)">1 hour</div>
+              <div class="sc-sub-item" onclick="setInterval_('15min',120)">2 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('15min',240)">4 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('15min',480)">8 hours</div>
+            </div>
+          </div>
+          <div class="sc-item" id="si-30min" data-mode="30min">
+            Every 30 min <span class="sc-arr">›</span>
+            <div class="sc-sub">
+              <div class="sc-sub-hd">Run for</div>
+              <div class="sc-sub-item" onclick="setInterval_('30min',null)">Until stopped</div>
+              <div class="sc-sub-item" onclick="setInterval_('30min',60)">1 hour</div>
+              <div class="sc-sub-item" onclick="setInterval_('30min',120)">2 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('30min',240)">4 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('30min',480)">8 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('30min',1440)">24 hours</div>
+            </div>
+          </div>
+          <div class="sc-item" id="si-1hr" data-mode="1hr">
+            Every hour <span class="sc-arr">›</span>
+            <div class="sc-sub">
+              <div class="sc-sub-hd">Run for</div>
+              <div class="sc-sub-item" onclick="setInterval_('1hr',null)">Until stopped</div>
+              <div class="sc-sub-item" onclick="setInterval_('1hr',60)">1 hour</div>
+              <div class="sc-sub-item" onclick="setInterval_('1hr',120)">2 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('1hr',240)">4 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('1hr',480)">8 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('1hr',1440)">24 hours</div>
+            </div>
+          </div>
+          <div class="sc-item" id="si-2hr" data-mode="2hr">
+            Every 2 hours <span class="sc-arr">›</span>
+            <div class="sc-sub">
+              <div class="sc-sub-hd">Run for</div>
+              <div class="sc-sub-item" onclick="setInterval_('2hr',null)">Until stopped</div>
+              <div class="sc-sub-item" onclick="setInterval_('2hr',120)">2 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('2hr',240)">4 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('2hr',480)">8 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('2hr',1440)">24 hours</div>
+            </div>
+          </div>
+          <div class="sc-item" id="si-6hr" data-mode="6hr">
+            Every 6 hours <span class="sc-arr">›</span>
+            <div class="sc-sub">
+              <div class="sc-sub-hd">Run for</div>
+              <div class="sc-sub-item" onclick="setInterval_('6hr',null)">Until stopped</div>
+              <div class="sc-sub-item" onclick="setInterval_('6hr',360)">6 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('6hr',720)">12 hours</div>
+              <div class="sc-sub-item" onclick="setInterval_('6hr',1440)">24 hours</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tz-strip">
+        <div class="tz-city"><span class="tz-label">TYO</span><span class="tz-time" id="tz-tyo">—</span></div>
+        <div class="tz-city"><span class="tz-label">SEL</span><span class="tz-time" id="tz-sel">—</span></div>
+        <div class="tz-city"><span class="tz-label">BEI</span><span class="tz-time" id="tz-bei">—</span></div>
+      </div>
+      <div id="clock"></div>
+    </div>
+  </header>
+
+  <!-- Left sidebar -->
+  <aside id="ls">
+    <div class="sec">
+      <div class="sec-lbl">Platforms</div>
+      <div class="pr"><div class="pr-l"><span class="pr-flag">🇯🇵</span><span class="pr-name">Mercari JP</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-mercari_jp">0</span><div class="sdot" id="dot-mercari_jp"></div></div></div>
+      <div class="pr"><div class="pr-l"><span class="pr-flag">🇯🇵</span><span class="pr-name">Yahoo Auctions</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-yahoo_auctions">0</span><div class="sdot" id="dot-yahoo_auctions"></div></div></div>
+      <div class="pr"><div class="pr-l"><span class="pr-flag">🇯🇵</span><span class="pr-name">Rakuma</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-rakuma">0</span><div class="sdot" id="dot-rakuma"></div></div></div>
+      <div class="pr"><div class="pr-l"><span class="pr-flag">🇰🇷</span><span class="pr-name">Bunjang</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-bunjang">0</span><div class="sdot" id="dot-bunjang"></div></div></div>
+      <div class="pr"><div class="pr-l"><span class="pr-flag">🇨🇳</span><span class="pr-name">Xianyu</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-xianyu">0</span><div class="sdot" id="dot-xianyu"></div></div></div>
+    </div>
+    <div class="sec">
+      <div class="sec-lbl">Database</div>
+      <div class="sr"><span class="sr-k">Total Listings</span><span class="sr-v" id="st-total">—</span></div>
+      <div class="sr"><span class="sr-k">Suspicious</span><span class="sr-v w" id="st-susp">—</span></div>
+      <div class="sr"><span class="sr-k">Alerts Sent</span><span class="sr-v" id="st-alerts">—</span></div>
+    </div>
+    <div class="sec">
+      <div class="sec-lbl">Keywords</div>
+      <div id="kw-list"></div>
+    </div>
+  </aside>
+
+  <!-- Globe -->
+  <div id="globe-wrap">
+    <div id="gc"></div>
+    <div id="globe-glow"></div>
+    <div id="globe-scan"></div>
+    <div id="hint">Drag · Scroll to zoom · Click a country</div>
+  </div>
+
+  <!-- Right sidebar -->
+  <aside id="rs" style="display:none">
+    <div id="rs-hd">
+      <div><div id="rs-country">—</div><div id="rs-count">0 listings</div></div>
+      <button id="rs-x" onclick="closeRight()">✕</button>
+    </div>
+    <div id="rs-ctrl">
+      <div style="display:flex;gap:6px">
+        <button class="fp on" onclick="setSusp(false,this)">All</button>
+        <button class="fp"    onclick="setSusp(true,this)">⚠ Suspicious</button>
+      </div>
+      <div class="vw">
+        <label for="vtog">+21% VAT</label>
+        <label class="tog">
+          <input type="checkbox" id="vtog" onchange="toggleVat(this.checked)"/>
+          <div class="tog-tr"></div><div class="tog-th"></div>
+        </label>
+      </div>
+    </div>
+    <div id="rs-list"><div class="rs-empty">Select a country on the globe</div></div>
+  </aside>
+
+</div>
+
+<!-- Keyword editor modal -->
+<div id="kw-overlay" onclick="overlayClick(event)">
+  <div id="kw-modal">
+    <div id="kw-modal-hd">
+      <h2>Keywords &amp; Filters</h2>
+      <button id="kw-modal-x" onclick="closeKwModal()">✕</button>
+    </div>
+    <div id="kw-modal-body">
+      <div class="rs-empty">Loading…</div>
+    </div>
+    <div id="kw-modal-ft">
+      <button class="kw-save-btn" id="kw-save-btn" onclick="saveKw()">Save changes</button>
+      <span class="kw-msg" id="kw-msg">Saved</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Globe state ───────────────────────────────────────────────────────────────
+let globe = null, globeData = [];
+let activeCountry = null, suspOnly = false, showVat = false;
+let _pinObjects = {}; // { country: { group, cardEl, data } }
+
+const DEFAULT_COUNTRIES = [
+  {country:'japan', name:'Japan',       flag:'🇯🇵', lon:139.6917, lat:35.6895, total:0, suspicious:0, platforms:['mercari_jp','yahoo_auctions','rakuma'], timezone:'Asia/Tokyo',    tzLabel:'JST'},
+  {country:'korea', name:'South Korea', flag:'🇰🇷', lon:126.9780, lat:37.5665, total:0, suspicious:0, platforms:['bunjang'],                               timezone:'Asia/Seoul',    tzLabel:'KST'},
+  {country:'china', name:'China',       flag:'🇨🇳', lon:116.4074, lat:39.9042, total:0, suspicious:0, platforms:['xianyu'],                                timezone:'Asia/Shanghai', tzLabel:'CST'},
+];
+globeData = [...DEFAULT_COUNTRIES];
+
+function getAsiaHour() { return ((new Date().getUTCHours() + 8) % 24); }
+function updateTodBadge() {
+  const h = getAsiaHour();
+  const label = h>=5&&h<7?'Dawn':h>=7&&h<19?'Day':h>=19&&h<22?'Dusk':'Night';
+  document.getElementById('tod-badge').textContent = label + '  ' + String(h).padStart(2,'0') + ':00 KST';
+}
+
+// ── Pin card DOM builder ──────────────────────────────────────────────────────
+function buildPinCard(d) {
+  const el = document.createElement('div');
+  _renderPinCard(el, d);
+  return el;
+}
+function _renderPinCard(el, d) {
+  el.className = 'globe-pin' + (d.suspicious > 0 ? ' suspicious' : '');
+  el.innerHTML =
+    `<div class="pin-flag">${d.flag}</div>` +
+    `<div class="pin-country">${d.name.toUpperCase()}</div>` +
+    (d.timezone ? `<div class="pin-time" data-tz="${d.timezone}" data-lbl="${d.tzLabel||''}">—</div>` : '') +
+    `<div class="pin-total">${d.total}</div>` +
+    `<div class="pin-label">listings found</div>` +
+    (d.suspicious > 0 ? `<div class="pin-susp">⚠ ${d.suspicious} suspicious</div>` : '') +
+    `<div class="pin-plats">${d.platforms.join('\n')}</div>`;
+  el.onclick = () => openCountry(d);
+}
+
+// ── Globe helpers (ported from Framer Globe_Pins.js) ─────────────────────────
+function _lonLatToVec3(THREE, lon, lat, r=1) {
+  const phi   = (90-lat) * Math.PI/180;
+  const theta = (lon+180) * Math.PI/180;
+  return new THREE.Vector3(-r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta));
+}
+
+function _makeCircleDotTex(THREE, size=64) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d'), r = size/2;
+  const g = ctx.createRadialGradient(r,r,r*.82,r,r,r);
+  g.addColorStop(0,'rgba(255,255,255,1)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(r,r,r-.5,0,Math.PI*2); ctx.closePath(); ctx.fill();
+  const tex = new THREE.CanvasTexture(c);
+  tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+
+function _makeHaloTex(THREE, size=128) {
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const g = ctx.createRadialGradient(size/2,size/2,0,size/2,size/2,size/2);
+  g.addColorStop(0,'rgba(255,255,255,.25)');
+  g.addColorStop(.35,'rgba(255,255,255,.1)');
+  g.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle = g; ctx.fillRect(0,0,size,size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter;
+  return tex;
+}
+
+// Hemisphere-fade PointsMaterial — front dots full opacity, back dots dimmed
+// Verbatim from Framer Globe_Pins.js makePointsMat()
+function _makePointsMat(THREE, color, size, backOpacity, dotTex, overrideOpacity) {
+  const mat = new THREE.PointsMaterial({
+    color: new THREE.Color(color), size, sizeAttenuation: true,
+    depthWrite: false, transparent: true, map: dotTex, alphaTest: 0,
+    opacity: overrideOpacity ?? 1
+  });
+  mat.toneMapped = false;
+  mat.onBeforeCompile = shader => {
+    shader.uniforms.uCamPos     = {value: new THREE.Vector3()};
+    shader.uniforms.uBackOpacity= {value: backOpacity};
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>',
+        '#include <common>\nvarying vec3 vWorldPos;\nuniform vec3 uCamPos;')
+      .replace('#include <begin_vertex>',
+        '#include <begin_vertex>\nvWorldPos=(modelMatrix*vec4(transformed,1.0)).xyz;')
+      .replace('#include <project_vertex>',
+        `#include <project_vertex>
+        float ndv=dot(normalize(uCamPos-vWorldPos),normalize(vWorldPos));
+        gl_PointSize*=mix(0.6,1.0,smoothstep(0.0,0.25,ndv));`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>',
+        '#include <common>\nvarying vec3 vWorldPos;uniform vec3 uCamPos;uniform float uBackOpacity;')
+      .replace('#include <clipping_planes_fragment>',
+        `#include <clipping_planes_fragment>
+        float ndHem;{vec3 vd=normalize(uCamPos-vWorldPos);vec3 nd=normalize(vWorldPos);ndHem=dot(vd,nd);}`)
+      .replace('#include <color_fragment>',
+        `#include <color_fragment>
+        diffuseColor.a*=mix(uBackOpacity,1.0,smoothstep(0.0,0.25,ndHem));`);
+    mat.userData.shader = shader;
+  };
+  return mat;
+}
+
+// Edge points from GeoJSON polygon coordinates (synchronous)
+function _buildEdges(polys) {
+  const out = [];
+  for (const poly of polys) {
+    for (const ring of poly) {
+      for (let i=0; i<ring.length-1; i++) {
+        let [lon1,lat1] = ring[i], [lon2,lat2] = ring[i+1];
+        let dLon = lon2-lon1;
+        if (Math.abs(dLon)>180) { lon2 += dLon>0?-360:360; dLon = lon2-lon1; }
+        const steps = Math.max(1, Math.ceil(Math.max(Math.abs(dLon),Math.abs(lat2-lat1))/0.8));
+        for (let s=0; s<=steps; s++) {
+          const t=s/steps, lon=((lon1+dLon*t)+540)%360-180, lat=lat1+(lat2-lat1)*t;
+          const phi=(90-lat)*Math.PI/180, theta=(lon+180)*Math.PI/180;
+          out.push(-Math.sin(phi)*Math.cos(theta), Math.cos(phi), Math.sin(phi)*Math.sin(theta));
+        }
+      }
+    }
+  }
+  return new Float32Array(out);
+}
+
+// Fill points via Web Worker (verbatim logic from Framer Globe_Pins.js)
+function _buildFillWorker(geoPolys) {
+  return new Promise((resolve, reject) => {
+    const src = `
+var PI=Math.PI;
+function wrap180(lon){return((lon+540)%360)-180;}
+function vec3(lon,lat){var phi=(90-lat)*PI/180,th=(lon+180)*PI/180;return[-Math.sin(phi)*Math.cos(th),Math.cos(phi),Math.sin(phi)*Math.sin(th)];}
+function unwrapRing(ring,refLon){var out=new Array(ring.length),prev=null;for(var i=0;i<ring.length;i++){var L=ring[i][0],A=ring[i][1],d=L-refLon;if(d>180)L-=360;else if(d<-180)L+=360;if(prev){var step=L-prev[0];if(step>180)L-=360;else if(step<-180)L+=360;}out[i]=[L,A];prev=out[i];}return out;}
+function pointInRing(pt,ring){var x=pt[0],y=pt[1],inside=false,n=ring.length;for(var i=0,j=n-1;i<n;j=i++){var xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1],denom=yj-yi;if(denom===0)continue;var inter=((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/denom+xi);if(inter)inside=!inside;}return inside;}
+function containsUnwrapped(poly,refLon,lon,lat){var rings=poly.coordinates;if(!rings||!rings.length)return false;var r0=unwrapRing(rings[0],refLon),pt=[lon,lat];if(!pointInRing(pt,r0))return false;for(var k=1;k<rings.length;k++){var rk=unwrapRing(rings[k],refLon);if(pointInRing(pt,rk))return false;}return true;}
+function bbox(r){var minLon=1e9,maxLon=-1e9,minLat=90,maxLat=-90;for(var i=0;i<r.length;i++){var L=r[i][0],A=r[i][1];if(L<minLon)minLon=L;if(L>maxLon)maxLon=L;if(A<minLat)minLat=A;if(A>maxLat)maxLat=A;}return{minLon,maxLon,minLat,maxLat};}
+onmessage=function(e){
+  var geos=e.data.geos,step=e.data.step||1.5,out=[];
+  for(var p=0;p<geos.length;p++){
+    var r0=unwrapRing(geos[p].coordinates[0],0),bb=bbox(r0),refLon=(bb.minLon+bb.maxLon)/2;
+    r0=unwrapRing(geos[p].coordinates[0],refLon);bb=bbox(r0);
+    var latS=Math.floor((bb.minLat-1)/step)*step,latE=Math.ceil((bb.maxLat+1)/step)*step;
+    for(var lat=latS;lat<=latE;lat+=step){
+      var odd=Math.round(Math.abs(lat/step))%2;
+      var lonS=Math.floor((bb.minLon-1)/step)*step+(odd?step*0.5:0),lonE=Math.ceil((bb.maxLon+1)/step)*step;
+      for(var lon=lonS;lon<=lonE;lon+=step){
+        var ll=Math.max(-90,Math.min(90,lat));
+        if(containsUnwrapped(geos[p],refLon,lon,ll)){var v=vec3(wrap180(lon),ll);out.push(v[0],v[1],v[2]);}
+      }
+    }
+  }
+  var arr=new Float32Array(out);postMessage({ok:true,fill:arr},[arr.buffer]);
+};`;
+    const blob = new Blob([src],{type:'application/javascript'});
+    const url  = URL.createObjectURL(blob);
+    const w    = new Worker(url);
+    w.onmessage = e => { URL.revokeObjectURL(url); w.terminate(); e.data?.ok ? resolve(e.data.fill) : reject(new Error('fill worker failed')); };
+    w.onerror   = err => { URL.revokeObjectURL(url); w.terminate(); reject(err); };
+    w.postMessage({geos: geoPolys, step: 1.5});
+  });
+}
+
+// GlitchShader — verbatim from Framer Globe_Pins.js
+const _GlitchShader = {
+  uniforms: { tDiffuse:{value:null}, uTime:{value:0}, uAmount:{value:0}, uSeed:{value:0} },
+  vertexShader: `varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+  fragmentShader: `
+    uniform sampler2D tDiffuse;uniform float uTime,uAmount,uSeed;varying vec2 vUv;
+    float hash(float n){return fract(sin(n)*43758.5453123);}
+    float hash2(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
+    void main(){
+      vec2 uv=vUv;float t=uTime+uSeed*10.0;
+      float gate=smoothstep(0.92,1.0,sin(t*1.7)*.5+.5)*smoothstep(0.88,1.0,sin(t*2.9)*.5+.5);
+      float amt=uAmount*gate;
+      float band=step(0.985,hash2(vec2(floor(uv.y*140.0),floor(t*18.0))));
+      float offset=(hash(uv.y*1000.0+t*20.0)-.5)*2.0;
+      uv.x+=offset*amt*(0.4+0.6*band);
+      vec2 rUv=uv+vec2(amt*0.15,0.0),bUv=uv-vec2(amt*0.15,0.0);
+      vec4 base=texture2D(tDiffuse,uv),split;
+      split.r=texture2D(tDiffuse,rUv).r;split.g=base.g;split.b=texture2D(tDiffuse,bUv).b;split.a=base.a;
+      vec4 col=mix(base,split,amt);
+      float line=step(0.992,hash2(vec2(floor(t*32.0),floor(uv.y*220.0))));
+      col.rgb=mix(col.rgb,col.rgb*0.6,line*amt*8.0);
+      gl_FragColor=col;
+    }`
+};
+
+// ── initGlobe — pure Three.js, matching Framer Globe_Pins.js architecture ────
+async function initGlobe() {
+  const el = document.getElementById('gc');
+
+  // Dynamic ESM imports (same CDN + versions as Framer source)
+  const THREE = await import('https://esm.sh/three@0.157?bundle');
+  const {OrbitControls}              = await import('https://esm.sh/three@0.157/examples/jsm/controls/OrbitControls?bundle');
+  const {CSS2DRenderer, CSS2DObject} = await import('https://esm.sh/three@0.157/examples/jsm/renderers/CSS2DRenderer?bundle');
+  const {EffectComposer}             = await import('https://esm.sh/three@0.157/examples/jsm/postprocessing/EffectComposer?bundle');
+  const {RenderPass}                 = await import('https://esm.sh/three@0.157/examples/jsm/postprocessing/RenderPass?bundle');
+  const {ShaderPass}                 = await import('https://esm.sh/three@0.157/examples/jsm/postprocessing/ShaderPass?bundle');
+  const {feature}                    = await import('https://esm.sh/topojson-client@3?bundle');
+
+  // Scene
+  const w = el.clientWidth||800, h = el.clientHeight||800;
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, w/h, 0.1, 100);
+  camera.position.set(0, 0, 2.5);
+
+  const renderer = new THREE.WebGLRenderer({antialias:false, alpha:true, premultipliedAlpha:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(w, h);
+  renderer.setClearColor(0, 0);
+  el.appendChild(renderer.domElement);
+
+  // Orbit controls
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping    = true;
+  controls.enablePan        = false;
+  controls.enableZoom       = false;
+  controls.autoRotate       = true;
+  controls.autoRotateSpeed  = 0.4;
+  controls.dampingFactor    = 0.06;
+
+  // Globe group — rotate so Tokyo/Seoul/Beijing cluster (~128°E, 37°N) faces camera
+  const globeGroup = new THREE.Group();
+  globeGroup.rotation.y = 2.42;   // longitude: puts ~128°E toward +Z
+  scene.add(globeGroup);
+
+  // Shared textures
+  const dotTex  = _makeCircleDotTex(THREE, 64);
+  const haloTex = _makeHaloTex(THREE, 128);
+
+  // Load land-110m topology (land outlines, not country borders)
+  let polys=[], geoPolys=[];
+  try {
+    const topo = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/land-110m.json').then(r=>r.json());
+    const land  = feature(topo, topo.objects.land);
+    (land.features || [land]).forEach(f => {
+      const g = f.geometry || f;
+      if (g.type==='Polygon') {
+        polys.push(g.coordinates);
+        geoPolys.push({type:'Polygon', coordinates:g.coordinates});
+      } else if (g.type==='MultiPolygon') {
+        g.coordinates.forEach(poly => {
+          polys.push(poly);
+          geoPolys.push({type:'Polygon', coordinates:poly});
+        });
+      }
+    });
+  } catch(e) { console.warn('land-110m load failed', e); }
+
+  // Edge dots (coastlines) — built synchronously
+  const edgeMat = _makePointsMat(THREE, '#7AE1FF', 0.006, 0.3, dotTex);
+  const edgePos = _buildEdges(polys);
+  const edgeGeo = new THREE.BufferGeometry();
+  edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edgePos, 3));
+  globeGroup.add(new THREE.Points(edgeGeo, edgeMat));
+
+  // Fill dots (land interior) — built in a Worker, added when ready
+  const fillMat = _makePointsMat(THREE, '#7AE1FF', 0.004, 0.3, dotTex, 0.6);
+  _buildFillWorker(geoPolys).then(fillPos => {
+    const fillGeo = new THREE.BufferGeometry();
+    fillGeo.setAttribute('position', new THREE.Float32BufferAttribute(fillPos, 3));
+    globeGroup.add(new THREE.Points(fillGeo, fillMat));
+  }).catch(e => console.warn('fill worker error', e));
+
+  // CSS2D renderer for floating pin labels
+  const labelRenderer = new CSS2DRenderer();
+  labelRenderer.setSize(w, h);
+  Object.assign(labelRenderer.domElement.style, {
+    position:'absolute', top:'0', left:'0', pointerEvents:'none', overflow:'visible'
+  });
+  el.appendChild(labelRenderer.domElement);
+
+  // Country pins (always visible, even at 0 listings)
+  DEFAULT_COUNTRIES.forEach(d => {
+    const pos   = _lonLatToVec3(THREE, d.lon, d.lat, 1);
+    const group = new THREE.Group();
+    group.position.copy(pos);
+
+    // Glowing sphere dot
+    group.add(new THREE.Mesh(
+      new THREE.SphereGeometry(0.007, 12, 12),
+      new THREE.MeshBasicMaterial({color: new THREE.Color('#7AE1FF')})
+    ));
+    // Halo sprite
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({
+      color: new THREE.Color('#7AE1FF'), map: haloTex,
+      transparent:true, blending:THREE.AdditiveBlending, depthWrite:false
+    }));
+    halo.scale.set(0.09, 0.09, 0.09);
+    group.add(halo);
+
+    // Floating pin card label
+    const cardEl = buildPinCard(d);
+    const label  = new CSS2DObject(cardEl);
+    label.position.set(0, 0.07, 0);
+    group.add(label);
+
+    globeGroup.add(group);
+    _pinObjects[d.country] = {group, cardEl, data: {...d}};
+  });
+
+  // Post-processing: GlitchShader
+  const composer   = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  const glitchPass = new ShaderPass(_GlitchShader);
+  glitchPass.uniforms.uAmount.value = 0.012;
+  composer.addPass(glitchPass);
+
+  // Animation loop
+  const allMats = [edgeMat, fillMat];
+  const clock   = new THREE.Clock();
+  function animate() {
+    requestAnimationFrame(animate);
+    const dt = clock.getDelta();
+    controls.update();
+    allMats.forEach(mat => {
+      const s = mat?.userData?.shader;
+      if (s) s.uniforms.uCamPos.value.copy(camera.position);
+    });
+    glitchPass.uniforms.uTime.value  += dt;
+    glitchPass.uniforms.uSeed.value   = (glitchPass.uniforms.uSeed.value + dt*0.13) % 1e3;
+    composer.render(dt);
+    labelRenderer.render(scene, camera);
+  }
+  animate();
+
+  // Resize handling
+  window.addEventListener('resize', () => {
+    const nw=el.clientWidth, nh=el.clientHeight;
+    camera.aspect = nw/nh;
+    camera.updateProjectionMatrix();
+    renderer.setSize(nw, nh);
+    composer.setSize(nw, nh);
+    labelRenderer.setSize(nw, nh);
+  });
+
+  // Stop auto-rotate on first interaction
+  el.addEventListener('pointerdown', () => {
+    controls.autoRotate = false;
+    document.getElementById('hint').style.opacity = '0';
+  }, {once:true});
+
+  globe = {renderer, scene, camera, controls, composer, labelRenderer};
+  updateTodBadge();
+  setInterval(updateTodBadge, 60000);
+}
+
+// ── Data refresh ──────────────────────────────────────────────────────────────
+async function refreshGlobe() {
+  try {
+    const {countries=[]} = await fetch('/api/globe-data').then(r => r.json());
+    globeData = countries;
+    // Merge API data into always-visible pin cards
+    countries.forEach(c => {
+      const pin = _pinObjects[c.country];
+      if (pin) { Object.assign(pin.data, c); _renderPinCard(pin.cardEl, pin.data); }
+    });
+  } catch(e) {}
+}
+
+// ── SSE ──────────────────────────────────────────────────────────────────────
+const sse=new EventSource('/api/stream');
+sse.onmessage=e=>{
+  const {db={},platforms={}}=JSON.parse(e.data);
+  set('st-total',(db.total_listings??'—').toLocaleString());
+  set('st-susp',(db.suspicious??'—').toLocaleString());
+  set('st-alerts',(db.alerts_sent??'—').toLocaleString());
+  Object.entries(db.by_platform||{}).forEach(([p,n])=>{ const el=document.getElementById('cnt-'+p); if(el) el.textContent=n.toLocaleString(); });
+  Object.entries(platforms).forEach(([p,s])=>{ const d=document.getElementById('dot-'+p); if(d) d.className='sdot'+(s.status==='OK'?' ok':s.status==='ERR'?' err':''); });
+  refreshGlobe();
+};
+
+// ── Right sidebar ────────────────────────────────────────────────────────────
+async function openCountry(d) {
+  activeCountry=d.country; suspOnly=false;
+  document.querySelectorAll('#rs-ctrl .fp').forEach((b,i)=>b.classList.toggle('on',i===0));
+  set('rs-country',`${d.flag}  ${d.name.toUpperCase()}`);
+  set('rs-count',`${d.total} listing${d.total!==1?'s':''}`);
+  document.getElementById('rs').style.display='flex';
+  document.getElementById('shell').classList.add('rs-open');
+  await fetchListings();
+}
+function closeRight() {
+  activeCountry=null;
+  document.getElementById('shell').classList.remove('rs-open');
+  setTimeout(()=>{ document.getElementById('rs').style.display='none'; },420);
+}
+async function fetchListings() {
+  document.getElementById('rs-list').innerHTML='<div class="rs-empty">Loading…</div>';
+  try {
+    const p=new URLSearchParams({country:activeCountry,suspicious_only:suspOnly,limit:80});
+    const {listings=[]}=await fetch(`/api/listings?${p}`).then(r=>r.json());
+    document.getElementById('rs-list').innerHTML=listings.length?listings.map(rowHTML).join(''):'<div class="rs-empty">No listings found</div>';
+    applyVat();
+  } catch(e){ document.getElementById('rs-list').innerHTML='<div class="rs-empty">Error loading</div>'; }
+}
+function rowHTML(l) {
+  const s=l.is_suspicious===1||l.is_suspicious===true;
+  const eur=l.price_eur!=null?`€${Math.round(l.price_eur).toLocaleString()}`:'—';
+  const vat=l.price_eur_nl!=null?`€${Math.round(l.price_eur_nl).toLocaleString()}`:'—';
+  const op=l.price&&l.currency?`${Math.round(l.price).toLocaleString()} ${l.currency}`:'';
+  const ti=l.translated_title||l.title||'—';
+  const ot=(l.translated_title&&l.title&&l.translated_title!==l.title)?l.title:'';
+  const pl=(l.platform||'').replace(/_/g,' ').toUpperCase();
+  const img=l.image_url
+    ?`<img class="lr-img" src="${x(l.image_url)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="lr-ph" style="display:none">—</div>`
+    :`<div class="lr-ph">—</div>`;
+  return `<a class="lr${s?' sf':''}" href="${x(l.url)}" target="_blank" rel="noopener">
+    ${img}
+    <div class="lr-b">
+      <div class="lr-top"><div class="lr-title">${x(ti)}</div><div class="lr-plat">${x(pl)}</div></div>
+      ${ot?`<div class="lr-orig">${x(ot)}</div>`:''}
+      ${s?`<span class="lr-stag">⚠ Suspicious</span>`:''}
+      <div class="lr-bot">
+        <div class="lr-prices">
+          <div class="lr-eur">${eur}${op?`<span class="lr-op">${x(op)}</span>`:''}</div>
+          <div class="lr-vat"><span class="lr-vl">+21% VAT</span>${vat}</div>
+        </div>
+        <div class="lr-lnk">View →</div>
+      </div>
+    </div>
+  </a>`;
+}
+function setSusp(only,btn) {
+  suspOnly=only;
+  document.querySelectorAll('#rs-ctrl .fp').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  if(activeCountry) fetchListings();
+}
+function toggleVat(on) { showVat=on; applyVat(); }
+function applyVat() { document.querySelectorAll('.lr-vat').forEach(e=>e.classList.toggle('show',showVat)); }
+
+// ── Scraping control ─────────────────────────────────────────────────────────
+let _scPaused = false;
+let _scMode   = 'nonstop';
+
+const MODE_LABELS = {
+  nonstop:'NON-STOP', '5min':'5 MIN', '15min':'15 MIN',
+  '30min':'30 MIN', '1hr':'1 HR', '2hr':'2 HR', '6hr':'6 HR',
+};
+
+function updateScBtn() {
+  const btn = document.getElementById('sc-btn');
+  const lbl = document.getElementById('sc-label');
+  if (_scPaused) {
+    btn.classList.add('paused');
+    lbl.textContent = 'PAUSED';
+  } else {
+    btn.classList.remove('paused');
+    lbl.textContent = MODE_LABELS[_scMode] || 'NON-STOP';
+  }
+  document.querySelectorAll('.sc-item').forEach(el => {
+    el.classList.toggle('active', !_scPaused && el.dataset.mode === _scMode);
+  });
+}
+
+async function toggleScrapePause() {
+  const endpoint = _scPaused ? '/api/scraping/resume' : '/api/scraping/pause';
+  try {
+    const r = await fetch(endpoint, {method:'POST'}).then(r=>r.json());
+    _scPaused = r.paused;
+    updateScBtn();
+  } catch(e){}
+}
+
+async function setInterval_(mode, durationMin) {
+  try {
+    const body = {mode};
+    if (durationMin !== null) body.duration_min = durationMin;
+    await fetch('/api/scraping/interval', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(body),
+    });
+    _scMode = mode;
+    if (_scPaused) {
+      await fetch('/api/scraping/resume', {method:'POST'});
+      _scPaused = false;
+    }
+    updateScBtn();
+  } catch(e){}
+}
+
+async function initScrapingStatus() {
+  try {
+    const {paused, mode} = await fetch('/api/scraping/status').then(r=>r.json());
+    _scPaused = paused;
+    _scMode   = mode || 'nonstop';
+    updateScBtn();
+  } catch(e){}
+}
+
+// ── Keyword editor ───────────────────────────────────────────────────────────
+const ALL_PLATFORMS = ['mercari_jp','yahoo_auctions','rakuma','bunjang','xianyu'];
+let _kwData = [];
+
+async function openKwModal() {
+  document.getElementById('kw-overlay').classList.add('open');
+  document.getElementById('kw-modal-body').innerHTML = '<div class="rs-empty">Loading…</div>';
+  try {
+    const {keywords=[]} = await fetch('/api/config').then(r=>r.json());
+    _kwData = JSON.parse(JSON.stringify(keywords)); // deep copy
+    renderKwModal();
+  } catch(e) {
+    document.getElementById('kw-modal-body').innerHTML = '<div class="rs-empty">Error loading config</div>';
+  }
+}
+
+function closeKwModal() {
+  document.getElementById('kw-overlay').classList.remove('open');
+}
+
+function overlayClick(e) {
+  if (e.target === document.getElementById('kw-overlay')) closeKwModal();
+}
+
+function renderKwModal() {
+  const body = document.getElementById('kw-modal-body');
+  body.innerHTML = '';
+
+  _kwData.forEach((grp, gi) => {
+    const card = document.createElement('div');
+    card.className = 'kw-group-card';
+
+    // Platform checkboxes HTML
+    const platHtml = ALL_PLATFORMS.map(p => {
+      const checked = (grp.platforms||[]).includes(p) ? 'checked' : '';
+      const pid = `plat-${gi}-${p}`;
+      const label = p.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+      return `<input type="checkbox" class="kw-plat-cb" id="${pid}" ${checked} data-gi="${gi}" data-p="${p}" onchange="kwPlatChange(${gi},'${p}',this.checked)">
+              <label class="kw-plat-lbl" for="${pid}">${label}</label>`;
+    }).join('');
+
+    card.innerHTML = `
+      <div class="kw-group-hd">
+        <input class="kw-group-name" type="text" value="${x(grp.group||'')}" placeholder="Group name"
+               oninput="_kwData[${gi}].group=this.value">
+        <button class="kw-del-btn" onclick="delKwGroup(${gi})">Remove</button>
+      </div>
+      <div class="kw-field">
+        <span class="kw-label">Keywords (one per line)</span>
+        <textarea class="kw-ta" oninput="kwTermsChange(${gi},this.value)">${(grp.terms||[]).join('\n')}</textarea>
+      </div>
+      <div class="kw-row">
+        <div class="kw-field">
+          <span class="kw-label">Price ceiling (EUR)</span>
+          <input class="kw-inp" type="number" min="0" value="${grp.price_ceiling_eur||''}"
+                 oninput="_kwData[${gi}].price_ceiling_eur=Number(this.value)||null">
+        </div>
+        <div class="kw-field">
+          <span class="kw-label">Suspicious threshold (0–1)</span>
+          <input class="kw-inp" type="number" min="0" max="1" step="0.05" value="${grp.suspicious_threshold||0.25}"
+                 oninput="_kwData[${gi}].suspicious_threshold=Number(this.value)">
+        </div>
+      </div>
+      <div class="kw-field">
+        <span class="kw-label">Size filter (comma separated)</span>
+        <input class="kw-inp" type="text" value="${(grp.size_filter||[]).join(', ')}"
+               oninput="kwSizesChange(${gi},this.value)">
+      </div>
+      <div class="kw-field">
+        <span class="kw-label">Platforms</span>
+        <div class="kw-plats">${platHtml}</div>
+      </div>`;
+    body.appendChild(card);
+  });
+
+  // Add group button
+  const addBtn = document.createElement('button');
+  addBtn.className = 'kw-add-btn';
+  addBtn.textContent = '+ Add keyword group';
+  addBtn.onclick = addKwGroup;
+  body.appendChild(addBtn);
+}
+
+function kwTermsChange(gi, val) {
+  _kwData[gi].terms = val.split('\n').map(s=>s.trim()).filter(Boolean);
+}
+function kwSizesChange(gi, val) {
+  _kwData[gi].size_filter = val.split(',').map(s=>s.trim()).filter(Boolean);
+}
+function kwPlatChange(gi, p, checked) {
+  const plats = _kwData[gi].platforms || [];
+  if (checked && !plats.includes(p)) plats.push(p);
+  if (!checked) { const i=plats.indexOf(p); if(i>-1) plats.splice(i,1); }
+  _kwData[gi].platforms = plats;
+}
+function delKwGroup(gi) {
+  _kwData.splice(gi, 1);
+  renderKwModal();
+}
+function addKwGroup() {
+  _kwData.push({group:'New Group', terms:[], size_filter:['46','48','S','M'], price_ceiling_eur:400, suspicious_threshold:0.25, platforms:[...ALL_PLATFORMS]});
+  renderKwModal();
+  document.getElementById('kw-modal-body').lastElementChild?.previousElementSibling?.scrollIntoView({behavior:'smooth'});
+}
+
+async function saveKw() {
+  const btn = document.getElementById('kw-save-btn');
+  const msg = document.getElementById('kw-msg');
+  btn.disabled = true;
+  try {
+    await fetch('/api/config', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({keywords:_kwData}),
+    });
+    buildKW();
+    msg.classList.add('show');
+    setTimeout(()=>msg.classList.remove('show'), 2000);
+  } catch(e){}
+  btn.disabled = false;
+}
+
+// ── Clock + timezone strip ────────────────────────────────────────────────────
+(function tick(){
+  const now = new Date();
+
+  // User's local time (upper right)
+  const localStr = now.toLocaleTimeString('en-GB', {hour12:false}) + ' ' +
+    (Intl.DateTimeFormat().resolvedOptions().timeZone || 'LOCAL').replace('_',' ');
+  document.getElementById('clock').textContent = localStr;
+
+  // City time formatter
+  const fmt = tz => new Intl.DateTimeFormat('en-GB', {
+    hour:'2-digit', minute:'2-digit', second:'2-digit', timeZone:tz, hour12:false
+  }).format(now);
+
+  // Header strip
+  document.getElementById('tz-tyo').textContent = fmt('Asia/Tokyo');
+  document.getElementById('tz-sel').textContent = fmt('Asia/Seoul');
+  document.getElementById('tz-bei').textContent = fmt('Asia/Shanghai');
+
+  // Pin card times (rendered by CSS2DObject, DOM is live)
+  document.querySelectorAll('.pin-time[data-tz]').forEach(el => {
+    const t = fmt(el.dataset.tz);
+    el.textContent = t + (el.dataset.lbl ? ' ' + el.dataset.lbl : '');
+  });
+
+  setTimeout(tick, 1000);
+})();
+
+// ── Keywords sidebar ─────────────────────────────────────────────────────────
+function buildKW() {
+  const groups = (_kwData.length ? _kwData : null);
+  if (!groups) { document.getElementById('kw-list').innerHTML = '<div class="kr"><div class="kr-meta">No groups configured</div></div>'; return; }
+  document.getElementById('kw-list').innerHTML = groups.map(k=>
+    `<div class="kr"><div class="kr-name">${x(k.group||'—')}</div><div class="kr-meta">≤ €${k.price_ceiling_eur||'—'} · ${(k.size_filter||[]).join(', ')||'all sizes'}</div></div>`
+  ).join('');
+}
+
+// Pre-load keyword data for sidebar (without opening modal)
+fetch('/api/config').then(r=>r.json()).then(({keywords=[]})=>{ _kwData=keywords; buildKW(); }).catch(()=>buildKW());
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function set(id,v){ const e=document.getElementById(id); if(e) e.textContent=v; }
+function x(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Dropdown hover manager (delay-based so sub-items stay reachable) ─────────
+(function() {
+  const wrap = document.querySelector('.sc-wrap');
+  const drop = document.querySelector('.sc-drop');
+  if (!wrap || !drop) return;
+
+  let closeTimer = null;
+  function openDrop()  { clearTimeout(closeTimer); drop.classList.add('open'); }
+  function closeDrop() { closeTimer = setTimeout(() => drop.classList.remove('open'), 160); }
+
+  wrap.addEventListener('mouseenter', openDrop);
+  wrap.addEventListener('mouseleave', closeDrop);
+  drop.addEventListener('mouseenter', openDrop);
+  drop.addEventListener('mouseleave', closeDrop);
+
+  drop.querySelectorAll('.sc-item').forEach(item => {
+    const sub = item.querySelector('.sc-sub');
+    if (!sub) return;
+    let subTimer = null;
+    function openSub()  { clearTimeout(subTimer); sub.classList.add('open'); }
+    function closeSub() { subTimer = setTimeout(() => sub.classList.remove('open'), 120); }
+    item.addEventListener('mouseenter', openSub);
+    item.addEventListener('mouseleave', closeSub);
+    sub.addEventListener('mouseenter', openSub);
+    sub.addEventListener('mouseleave', closeSub);
+  });
+})();
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+initGlobe().then(refreshGlobe);
+initScrapingStatus();
+setInterval(refreshGlobe, 15000);
+</script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  FashionVoid Asia Monitor — Python Dependencies
+#  Install with: pip install -r requirements.txt
+#  Playwright setup: playwright install chromium
+# ─────────────────────────────────────────────────────────────────────────────
+
+# HTTP client (async, sync, HTTP/2 support)
+httpx[http2]==0.27.0
+
+# HTML parsing
+beautifulsoup4==4.12.3
+lxml>=5.3.0
+
+# Headless browser automation (Yahoo Auctions, Xianyu)
+playwright>=1.47.0
+
+# Task scheduling
+APScheduler==3.10.4
+
+# YAML config parsing
+PyYAML==6.0.1
+
+# Notifications
+twilio==9.1.0
+
+# Rich terminal UI
+rich==13.7.1
+
+# Date/time utilities
+python-dateutil==2.9.0
+
+# Retry logic
+tenacity==8.3.0
+
+# Environment variable management
+python-dotenv==1.0.1
+
+# Web dashboard
+fastapi>=0.111.0
+uvicorn>=0.29.0
