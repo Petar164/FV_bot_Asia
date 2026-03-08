@@ -1,88 +1,183 @@
+# ─────────────────────────────────────────────────────────────────────────────
+#  FashionVoid Monitor — config.yaml.example
+#  Copy this file to config.yaml and fill in your credentials.
+#  config.yaml is gitignored — this example file is safe to commit.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Keyword groups ────────────────────────────────────────────────────────────
+#
+# Each group runs independently.  Platforms can differ between groups.
+# AI-generated terms are stored here after expansion — do not edit manually.
+#
 keywords:
-- group: Dior Homme Hedi
-  terms:
-  - dior homme
-  - ディオールオム
-  - 디올옴므
-  - dior homme hedi
-  size_filter:
-  - '46'
-  - '48'
-  - S
-  - M
-  price_ceiling_eur: 400
-  suspicious_threshold: 0.25
-  platforms:
-  - mercari_jp
-  - yahoo_auctions
-  - rakuma
-  - bunjang
-  - xianyu
-- group: SLP Hedi
-  terms:
-  - saint laurent
-  - サンローラン
-  - 생로랑
-  - YSL hedi
-  - slp hedi
-  size_filter:
-  - '46'
-  - '48'
-  - S
-  - M
-  price_ceiling_eur: 350
-  suspicious_threshold: 0.25
-  platforms:
-  - mercari_jp
-  - yahoo_auctions
-  - bunjang
-  - rakuma
-  - xianyu
+  - group: "Dior Homme Hedi leather jacket"
+    user_input: "Dior Homme Hedi Slimane leather jacket"
+
+    # Set to true after running keyword_ai_expander
+    ai_generated: false
+    last_expanded: null
+
+    # English terms — used by EU scrapers and for rolling-avg tracking
+    terms_en:
+      - "dior homme"
+      - "DH hedi"
+      - "hedi slimane"
+      - "SS03"
+      - "AW04"
+
+    # Language-specific terms — filled automatically by keyword_ai_expander
+    terms_jp: []
+    terms_kr: []
+    terms_cn: []
+
+    price_ceiling_eur: 400
+    size_filter: ["46", "48", "S", "M"]
+    suspicious_threshold: 0.25
+
+    platforms:
+      eu:   ["vinted", "vestiaire"]
+      asia: ["mercari_jp", "yahoo_auctions", "rakuma", "bunjang", "xianyu"]
+
+  - group: "SLP Hedi"
+    user_input: "Saint Laurent Paris Hedi Slimane"
+    ai_generated: false
+    last_expanded: null
+
+    terms_en:
+      - "saint laurent"
+      - "SLP"
+      - "hedi slimane"
+      - "ysl hedi"
+
+    terms_jp: []
+    terms_kr: []
+    terms_cn: []
+
+    price_ceiling_eur: 350
+    size_filter: ["46", "48", "S", "M"]
+    suspicious_threshold: 0.25
+
+    platforms:
+      eu:   ["vinted", "vestiaire"]
+      asia: ["mercari_jp", "yahoo_auctions", "rakuma", "bunjang", "xianyu"]
+
+
+# ── Translation ───────────────────────────────────────────────────────────────
+translation:
+  primary: "deepl"                          # "deepl" | "google"
+  deepl_api_key: "YOUR_DEEPL_KEY"           # ends in :fx for free tier
+  google_api_key: "YOUR_GOOGLE_KEY"         # fallback
+  cache_translations: true
+
+
+# ── OpenAI (keyword expansion + GPT-4o vision filter) ────────────────────────
+openai:
+  api_key: "YOUR_OPENAI_KEY"
+  vision_model: "gpt-4o"
+  vision_enabled: true
+  min_confidence: 70          # score >= 70 -> fire all alerts
+  priority_threshold: 50      # score 50-69 -> email only
+
+
+# ── AI keyword expander ───────────────────────────────────────────────────────
+ai_expander:
+  enabled: true
+  auto_expand_on_save: true
+  debounce_ms: 600
+  max_suggestions: 6
+
+
+# ── Scraping behaviour ────────────────────────────────────────────────────────
+scraping:
+  residential_mode: true
+
+  proxy_required:
+    vinted:         false
+    vestiaire:      false
+    mercari_jp:     false
+    yahoo_auctions: true
+    rakuma:         false
+    bunjang:        false
+    xianyu:         true
+
+  request_delay:
+    vinted:         3
+    vestiaire:      5
+    mercari_jp:     3
+    yahoo_auctions: 4
+    rakuma:         3
+    bunjang:        4
+    xianyu:         5
+
+
+# ── Scoring thresholds ────────────────────────────────────────────────────────
+scoring:
+  min_score_to_alert: 60
+  min_score_to_store: 30
+
+
+# ── Proxies ───────────────────────────────────────────────────────────────────
 proxies:
   enabled: false
-  rotation_url: YOUR_PROXY_ROTATION_ENDPOINT
-  username: YOUR_PROXY_USERNAME
-  password: YOUR_PROXY_PASSWORD
+  rotation_url: "YOUR_PROXY_ROTATION_ENDPOINT"
+  username: "YOUR_PROXY_USERNAME"
+  password: "YOUR_PROXY_PASSWORD"
   static_list:
-  - http://user:pass@proxy1.example.com:8080
-  - http://user:pass@proxy2.example.com:8080
+    - "http://user:pass@proxy1.example.com:8080"
+    - "http://user:pass@proxy2.example.com:8080"
+
+
+# ── Alert channels ────────────────────────────────────────────────────────────
 alerts:
   email:
     enabled: false
     smtp_host: smtp.gmail.com
     smtp_port: 587
-    sender: YOUR_EMAIL@gmail.com
-    recipient: YOUR_EMAIL@gmail.com
-    password: YOUR_GMAIL_APP_PASSWORD
+    sender: "YOUR_EMAIL@gmail.com"
+    recipient: "YOUR_EMAIL@gmail.com"
+    password: "YOUR_GMAIL_APP_PASSWORD"
+
   sms:
     enabled: false
-    twilio_sid: YOUR_TWILIO_ACCOUNT_SID
-    twilio_token: YOUR_TWILIO_AUTH_TOKEN
-    from_number: +1XXXXXXXXXX
-    to_number: +YOUR_NUMBER
+    twilio_sid: "YOUR_TWILIO_ACCOUNT_SID"
+    twilio_token: "YOUR_TWILIO_AUTH_TOKEN"
+    from_number: "+1XXXXXXXXXX"
+    to_number: "+YOUR_NUMBER"
     whatsapp_enabled: false
-    whatsapp_from: whatsapp:+14155238886
-    whatsapp_to: whatsapp:+YOUR_NUMBER
+    whatsapp_from: "whatsapp:+14155238886"
+    whatsapp_to: "whatsapp:+YOUR_NUMBER"
+
   push:
     enabled: true
-    ntfy_topic: fashionvoid-alerts
-    ntfy_server: https://ntfy.sh
+    ntfy_topic: "fashionvoid-alerts"
+    ntfy_server: "https://ntfy.sh"
     priority: high
+
+
+# ── Scrape intervals (seconds) ────────────────────────────────────────────────
 intervals_seconds:
-  mercari_jp: 45
+  vinted:         45
+  vestiaire:      90
+  mercari_jp:     45
   yahoo_auctions: 60
-  rakuma: 60
-  bunjang: 90
-  xianyu: 120
+  rakuma:         60
+  bunjang:        90
+  xianyu:         120
+
+
+# ── Currency conversion ───────────────────────────────────────────────────────
 currency:
-  api_key: YOUR_EXCHANGERATE_API_KEY
+  api_key: "YOUR_EXCHANGERATE_API_KEY"
   base: EUR
   cache_ttl_seconds: 3600
-translate:
-  api_key: YOUR_GOOGLE_TRANSLATE_API_KEY
-  target_language: en
+
+
+# ── Database ──────────────────────────────────────────────────────────────────
 database:
   path: fashionvoid.db
+
+
+# ── Logging ───────────────────────────────────────────────────────────────────
 logging:
   level: INFO
   log_file: fashionvoid.log
