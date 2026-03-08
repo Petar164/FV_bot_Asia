@@ -96,7 +96,7 @@ class PushAlert:
         """Short title for the push notification."""
         platform = listing.get("platform", "").replace("_", " ").upper()
         price_eur = listing.get("price_eur")
-        price_str = f"€{price_eur:,.0f}" if price_eur else ""
+        price_str = f"EUR {price_eur:,.0f}" if price_eur else ""
         suspicious = "⚠ " if listing.get("is_suspicious") else ""
         return f"{suspicious}[{platform}] {price_str}"
 

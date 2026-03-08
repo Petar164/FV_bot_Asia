@@ -323,12 +323,12 @@
     .fp.on { border-color:var(--accent); color:var(--accent); }
     .vw { display:flex; align-items:center; gap:7px; }
     .vw label { font-size:8px; letter-spacing:1.5px; text-transform:uppercase; color:var(--dim); cursor:pointer; }
-    .tog { position:relative; width:30px; height:16px; cursor:pointer; }
-    .tog input { opacity:0; width:0; height:0; }
-    .tog-tr { position:absolute; inset:0; border-radius:8px; background:var(--mute); transition:background .2s; }
-    .tog input:checked + .tog-tr { background:#1e1e1e; border:1px solid #444; }
-    .tog-th { position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:var(--dim); transition:all .2s; }
-    .tog input:checked ~ .tog-th { left:16px; background:var(--accent); }
+    .tog { position:relative; display:inline-block; width:34px; height:18px; cursor:pointer; flex-shrink:0; }
+    .tog input { opacity:0; width:0; height:0; position:absolute; }
+    .tog-tr { position:absolute; inset:0; border-radius:9px; background:var(--mute); border:1px solid var(--border2); overflow:hidden; transition:background .2s, border-color .2s; }
+    .tog input:checked + .tog-tr { background:#1a1a1a; border-color:#444; }
+    .tog-th { position:absolute; top:3px; left:3px; width:10px; height:10px; border-radius:50%; background:var(--dim); transition:left .2s, background .2s; pointer-events:none; }
+    .tog input:checked ~ .tog-th { left:19px; background:var(--accent); }
     #rs-list { flex:1; overflow-y:auto; }
     #rs-list::-webkit-scrollbar { width:3px; }
     #rs-list::-webkit-scrollbar-thumb { background:#1e1e1e; }
@@ -603,9 +603,19 @@
       <button id="rs-x" onclick="closeRight()">✕</button>
     </div>
     <div id="rs-ctrl">
-      <div style="display:flex;gap:6px">
-        <button class="fp on" onclick="setSusp(false,this)">All</button>
-        <button class="fp"    onclick="setSusp(true,this)">⚠ Suspicious</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <div id="filt-btns" style="display:flex;gap:6px">
+          <button class="fp on" onclick="setSusp('all',this)">All</button>
+          <button class="fp"    onclick="setSusp('suspicious',this)">⚠ Suspicious</button>
+          <button class="fp"    onclick="setSusp('clean',this)">✓ Clean</button>
+        </div>
+        <div style="width:1px;height:14px;background:var(--border2);margin:0 2px"></div>
+        <div id="sort-btns" style="display:flex;gap:6px">
+          <button class="fp on" id="sort-newest"   onclick="setSort('newest',this)">New→Old</button>
+          <button class="fp"    id="sort-oldest"   onclick="setSort('oldest',this)">Old→New</button>
+          <button class="fp"    id="sort-price-lo" onclick="setSort('price_asc',this)">$ ↑</button>
+          <button class="fp"    id="sort-price-hi" onclick="setSort('price_desc',this)">$ ↓</button>
+        </div>
       </div>
       <div class="vw">
         <label for="vtog">+21% VAT</label>
@@ -640,7 +650,7 @@
 <script>
 // ── Globe state ───────────────────────────────────────────────────────────────
 let globe = null, globeData = [];
-let activeCountry = null, suspOnly = false, showVat = false;
+let activeCountry = null, showVat = false;
 let _pinObjects = {}; // { country: { group, cardEl, data } }
 
 const DEFAULT_COUNTRIES = [
@@ -1042,9 +1052,16 @@ sse.onmessage=e=>{
 };
 
 // ── Right sidebar ────────────────────────────────────────────────────────────
+let _suspFilter='all'; // 'all' | 'suspicious' | 'clean'
+let _sortMode='newest'; // 'newest' | 'oldest' | 'price_asc' | 'price_desc'
+
 async function openCountry(d) {
-  activeCountry=d.country; suspOnly=false;
-  document.querySelectorAll('#rs-ctrl .fp').forEach((b,i)=>b.classList.toggle('on',i===0));
+  activeCountry=d.country; _suspFilter='all'; _sortMode='newest';
+  // reset filter + sort buttons
+  document.querySelectorAll('#filt-btns .fp').forEach(b=>b.classList.remove('on'));
+  document.querySelector('#filt-btns .fp').classList.add('on');
+  document.querySelectorAll('#sort-btns .fp').forEach(b=>b.classList.remove('on'));
+  document.getElementById('sort-newest').classList.add('on');
   set('rs-country',`${d.flag}  ${d.name.toUpperCase()}`);
   set('rs-count',`${d.total} listing${d.total!==1?'s':''}`);
   document.getElementById('rs').style.display='flex';
@@ -1056,14 +1073,38 @@ function closeRight() {
   document.getElementById('shell').classList.remove('rs-open');
   setTimeout(()=>{ document.getElementById('rs').style.display='none'; },420);
 }
-async function fetchListings() {
-  document.getElementById('rs-list').innerHTML='<div class="rs-empty">Loading…</div>';
+const _PAGE=80;
+let _listOffset=0, _listTotal=0;
+
+async function fetchListings(append=false) {
+  const list=document.getElementById('rs-list');
+  if(!append){ _listOffset=0; list.innerHTML='<div class="rs-empty">Loading…</div>'; }
+  else { document.getElementById('load-more-btn')?.remove(); }
   try {
-    const p=new URLSearchParams({country:activeCountry,suspicious_only:suspOnly,limit:80});
-    const {listings=[]}=await fetch(`/api/listings?${p}`).then(r=>r.json());
-    document.getElementById('rs-list').innerHTML=listings.length?listings.map(rowHTML).join(''):'<div class="rs-empty">No listings found</div>';
+    const p=new URLSearchParams({
+      country: activeCountry,
+      suspicious_only: _suspFilter==='suspicious',
+      clean_only: _suspFilter==='clean',
+      sort: _sortMode,
+      limit: _PAGE,
+      offset: _listOffset,
+    });
+    const {listings=[],total=0}=await fetch(`/api/listings?${p}`).then(r=>r.json());
+    _listTotal=total;
+    if(!append) list.innerHTML=listings.length?listings.map(rowHTML).join(''):'<div class="rs-empty">No listings found</div>';
+    else listings.forEach(l=>{ const tmp=document.createElement('div'); tmp.innerHTML=rowHTML(l); list.appendChild(tmp.firstElementChild); });
+    _listOffset+=listings.length;
+    if(_listOffset<_listTotal){
+      const btn=document.createElement('button');
+      btn.id='load-more-btn';
+      btn.className='fp';
+      btn.style.cssText='width:100%;margin:8px 0;padding:8px;';
+      btn.textContent=`Load more (${_listOffset} / ${_listTotal})`;
+      btn.onclick=()=>fetchListings(true);
+      list.appendChild(btn);
+    }
     applyVat();
-  } catch(e){ document.getElementById('rs-list').innerHTML='<div class="rs-empty">Error loading</div>'; }
+  } catch(e){ list.innerHTML='<div class="rs-empty">Error loading</div>'; }
 }
 function rowHTML(l) {
   const s=l.is_suspicious===1||l.is_suspicious===true;
@@ -1092,9 +1133,18 @@ function rowHTML(l) {
     </div>
   </a>`;
 }
-function setSusp(only,btn) {
-  suspOnly=only;
-  document.querySelectorAll('#rs-ctrl .fp').forEach(b=>b.classList.remove('on'));
+function setSusp(mode,btn) {
+  _suspFilter=mode;
+  document.querySelectorAll('#filt-btns .fp').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  if(activeCountry) fetchListings();
+}
+function setSort(mode,btn) {
+  _sortMode=mode;
+  ['sort-newest','sort-oldest','sort-price-lo','sort-price-hi'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.classList.remove('on');
+  });
   btn.classList.add('on');
   if(activeCountry) fetchListings();
 }
@@ -1162,15 +1212,46 @@ async function initScrapingStatus() {
 }
 
 // ── Keyword editor ───────────────────────────────────────────────────────────
-const ALL_PLATFORMS = ['mercari_jp','yahoo_auctions','rakuma','bunjang','xianyu'];
+const EU_PLATFORMS   = ['vinted','vestiaire'];
+const ASIA_PLATFORMS = ['mercari_jp','yahoo_auctions','bunjang','xianyu'];
+const ALL_PLATFORMS  = [...EU_PLATFORMS, ...ASIA_PLATFORMS];
 let _kwData = [];
+
+// Normalise a keyword group to always use the {eu,asia} dict schema internally
+function _normGroup(grp) {
+  const g = JSON.parse(JSON.stringify(grp));
+  // Platforms: flatten legacy flat list → dict
+  if (Array.isArray(g.platforms)) {
+    const flat = g.platforms;
+    g.platforms = {
+      eu:   EU_PLATFORMS.filter(p => flat.includes(p)),
+      asia: ASIA_PLATFORMS.filter(p => flat.includes(p)),
+    };
+  }
+  if (!g.platforms || typeof g.platforms !== 'object' || Array.isArray(g.platforms)) {
+    g.platforms = { eu: [...EU_PLATFORMS], asia: [...ASIA_PLATFORMS] };
+  }
+  // Terms: legacy flat 'terms' → terms_en
+  if (g.terms && !g.terms_en) { g.terms_en = g.terms; }
+  delete g.terms;
+  if (!g.terms_en) g.terms_en = [];
+  if (!g.terms_jp) g.terms_jp = [];
+  if (!g.terms_kr) g.terms_kr = [];
+  if (!g.terms_cn) g.terms_cn = [];
+  return g;
+}
+
+function _flatPlats(grp) {
+  const p = grp.platforms || {};
+  return [...(p.eu||[]), ...(p.asia||[])];
+}
 
 async function openKwModal() {
   document.getElementById('kw-overlay').classList.add('open');
   document.getElementById('kw-modal-body').innerHTML = '<div class="rs-empty">Loading…</div>';
   try {
     const {keywords=[]} = await fetch('/api/config').then(r=>r.json());
-    _kwData = JSON.parse(JSON.stringify(keywords)); // deep copy
+    _kwData = keywords.map(_normGroup);
     renderKwModal();
   } catch(e) {
     document.getElementById('kw-modal-body').innerHTML = '<div class="rs-empty">Error loading config</div>';
@@ -1192,10 +1273,10 @@ function renderKwModal() {
   _kwData.forEach((grp, gi) => {
     const card = document.createElement('div');
     card.className = 'kw-group-card';
+    const flat = _flatPlats(grp);
 
-    // Platform checkboxes HTML
     const platHtml = ALL_PLATFORMS.map(p => {
-      const checked = (grp.platforms||[]).includes(p) ? 'checked' : '';
+      const checked = flat.includes(p) ? 'checked' : '';
       const pid = `plat-${gi}-${p}`;
       const label = p.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
       return `<input type="checkbox" class="kw-plat-cb" id="${pid}" ${checked} data-gi="${gi}" data-p="${p}" onchange="kwPlatChange(${gi},'${p}',this.checked)">
@@ -1209,8 +1290,22 @@ function renderKwModal() {
         <button class="kw-del-btn" onclick="delKwGroup(${gi})">Remove</button>
       </div>
       <div class="kw-field">
-        <span class="kw-label">Keywords (one per line)</span>
-        <textarea class="kw-ta" oninput="kwTermsChange(${gi},this.value)">${(grp.terms||[]).join('\n')}</textarea>
+        <span class="kw-label">English terms (one per line · used by all platforms)</span>
+        <textarea class="kw-ta" oninput="kwLangChange(${gi},'terms_en',this.value)">${(grp.terms_en||[]).join('\n')}</textarea>
+      </div>
+      <div class="kw-row">
+        <div class="kw-field">
+          <span class="kw-label">Japanese 🇯🇵</span>
+          <textarea class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_jp',this.value)">${(grp.terms_jp||[]).join('\n')}</textarea>
+        </div>
+        <div class="kw-field">
+          <span class="kw-label">Korean 🇰🇷</span>
+          <textarea class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_kr',this.value)">${(grp.terms_kr||[]).join('\n')}</textarea>
+        </div>
+        <div class="kw-field">
+          <span class="kw-label">Chinese 🇨🇳</span>
+          <textarea class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_cn',this.value)">${(grp.terms_cn||[]).join('\n')}</textarea>
+        </div>
       </div>
       <div class="kw-row">
         <div class="kw-field">
@@ -1236,7 +1331,6 @@ function renderKwModal() {
     body.appendChild(card);
   });
 
-  // Add group button
   const addBtn = document.createElement('button');
   addBtn.className = 'kw-add-btn';
   addBtn.textContent = '+ Add keyword group';
@@ -1244,16 +1338,18 @@ function renderKwModal() {
   body.appendChild(addBtn);
 }
 
-function kwTermsChange(gi, val) {
-  _kwData[gi].terms = val.split('\n').map(s=>s.trim()).filter(Boolean);
+function kwLangChange(gi, field, val) {
+  _kwData[gi][field] = val.split('\n').map(s=>s.trim()).filter(Boolean);
 }
 function kwSizesChange(gi, val) {
   _kwData[gi].size_filter = val.split(',').map(s=>s.trim()).filter(Boolean);
 }
 function kwPlatChange(gi, p, checked) {
-  const plats = _kwData[gi].platforms || [];
-  if (checked && !plats.includes(p)) plats.push(p);
-  if (!checked) { const i=plats.indexOf(p); if(i>-1) plats.splice(i,1); }
+  const plats = _kwData[gi].platforms || {eu:[], asia:[]};
+  const bucket = EU_PLATFORMS.includes(p) ? 'eu' : 'asia';
+  if (!plats[bucket]) plats[bucket] = [];
+  if (checked && !plats[bucket].includes(p)) plats[bucket].push(p);
+  if (!checked) { const i=plats[bucket].indexOf(p); if(i>-1) plats[bucket].splice(i,1); }
   _kwData[gi].platforms = plats;
 }
 function delKwGroup(gi) {
@@ -1261,7 +1357,7 @@ function delKwGroup(gi) {
   renderKwModal();
 }
 function addKwGroup() {
-  _kwData.push({group:'New Group', terms:[], size_filter:['46','48','S','M'], price_ceiling_eur:400, suspicious_threshold:0.25, platforms:[...ALL_PLATFORMS]});
+  _kwData.push(_normGroup({group:'New Group', terms_en:[], terms_jp:[], terms_kr:[], terms_cn:[], size_filter:['46','48','S','M'], price_ceiling_eur:400, suspicious_threshold:0.25, platforms:{eu:[...EU_PLATFORMS],asia:[...ASIA_PLATFORMS]}}));
   renderKwModal();
   document.getElementById('kw-modal-body').lastElementChild?.previousElementSibling?.scrollIntoView({behavior:'smooth'});
 }

@@ -146,7 +146,10 @@ async def api_listings(
     platform: str = Query(default="all"),
     country: str = Query(default="all"),
     suspicious_only: bool = Query(default=False),
-    limit: int = Query(default=60, le=200),
+    clean_only: bool = Query(default=False),
+    sort: str = Query(default="newest"),
+    limit: int = Query(default=60, le=500),
+    offset: int = Query(default=0, ge=0),
 ):
     """Return recent listings with optional filters. Supports country=japan|korea|china."""
     if not _db:
@@ -168,11 +171,24 @@ async def api_listings(
 
         if suspicious_only:
             where_clauses.append("is_suspicious = 1")
+        elif clean_only:
+            where_clauses.append("is_suspicious = 0")
+
+        _ORDER_MAP = {
+            "newest":    "first_seen DESC",
+            "oldest":    "first_seen ASC",
+            "price_asc": "price_eur ASC",
+            "price_desc":"price_eur DESC",
+        }
+        order_sql = _ORDER_MAP.get(sort, "first_seen DESC")
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM listings {where_sql}", params
+        ).fetchone()[0]
         rows = conn.execute(
-            f"SELECT * FROM listings {where_sql} ORDER BY first_seen DESC LIMIT ?",
-            params + [limit],
+            f"SELECT * FROM listings {where_sql} ORDER BY {order_sql} LIMIT ? OFFSET ?",
+            params + [limit, offset],
         ).fetchall()
 
     listings = []
@@ -181,7 +197,7 @@ async def api_listings(
         d["price_eur_nl"] = _nl_landed(d.get("price_eur"))
         listings.append(d)
 
-    return {"listings": listings}
+    return {"listings": listings, "total": total, "offset": offset, "limit": limit}
 
 
 @app.get("/api/stream")
