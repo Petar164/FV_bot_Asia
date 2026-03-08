@@ -991,7 +991,7 @@ async function initGlobe() {
     // closer zoom → slightly larger cards; further → smaller
     const dist     = camera.position.length();
     const pinScale = Math.min(1.2, Math.max(0.7, 2.2 / dist));
-    el.style.setProperty('--pin-scale', pinScale.toFixed(3));
+    document.documentElement.style.setProperty('--pin-scale', pinScale.toFixed(3));
   }
   animate();
 
