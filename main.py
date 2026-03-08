@@ -35,7 +35,7 @@ from dashboard import init as dashboard_init
 from db import Database
 from notifications import EmailAlert, PushAlert, SMSAlert
 from scrapers import SCRAPER_REGISTRY
-from utils import CurrencyConverter, ProxyManager, Translator
+from utils import CurrencyConverter, KeywordAIExpander, KeywordSuggester, ProxyManager, Translator
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 
@@ -60,6 +60,30 @@ def _configure_logging(config: dict) -> None:
 
 
 logger = logging.getLogger("fashionvoid.main")
+
+
+def _active_platforms(config: dict) -> list[str]:
+    """
+    Collect the union of all platforms selected across keyword groups.
+    Supports both the legacy flat list and the new {eu, asia} dict schema.
+    Falls back to all registered platforms if no keywords are configured.
+    """
+    kw_groups = config.get("keywords", [])
+    platforms: set[str] = set()
+
+    for group in kw_groups:
+        cfg = group.get("platforms", [])
+        if isinstance(cfg, dict):
+            platforms.update(cfg.get("eu", []))
+            platforms.update(cfg.get("asia", []))
+        elif isinstance(cfg, list):
+            platforms.update(cfg)
+
+    if not platforms:
+        return list(SCRAPER_REGISTRY.keys())
+
+    # Only return platforms that have a registered scraper
+    return [p for p in platforms if p in SCRAPER_REGISTRY]
 
 # ── Rich console ──────────────────────────────────────────────────────────────
 
@@ -130,6 +154,8 @@ async def main(args) -> None:
     translator = Translator(config)
     fx = CurrencyConverter(config)
     proxy = ProxyManager(config)
+    keyword_expander = KeywordAIExpander(config, translator)
+    keyword_suggester = KeywordSuggester(config, translator)
 
     # Pre-warm currency rates
     await fx._get_rates()
@@ -142,9 +168,11 @@ async def main(args) -> None:
     ]
 
     # ── Scraper instances ─────────────────────────────────────────────
-    target_platforms = (
-        [args.platform] if args.platform else list(SCRAPER_REGISTRY.keys())
-    )
+    # Collect all platforms referenced across keyword groups
+    if args.platform:
+        target_platforms = [args.platform]
+    else:
+        target_platforms = _active_platforms(config)
 
     scrapers: dict[str, object] = {}
     for name in target_platforms:
@@ -257,8 +285,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--platform",
-        choices=list(SCRAPER_REGISTRY.keys()),
-        help="Run only the specified platform",
+        choices=sorted(SCRAPER_REGISTRY.keys()),
+        help="Run only the specified platform (vinted, vestiaire, mercari_jp, …)",
     )
 
     cli_args = parser.parse_args()
