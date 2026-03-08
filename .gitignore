@@ -42,3 +42,16 @@ playwright-traces/
 
 # Pytest
 .pytest_cache/
+
+# Sessions (cookies, tokens — runtime, never commit)
+sessions/*/
+!sessions/*/.gitkeep
+
+# Node
+node_modules/
+.next/
+out/
+
+# Electron build output
+release/
+dist-electron/
