@@ -90,9 +90,12 @@ class VintedScraper(BaseScraper):
                 resp = await client.get(_SEARCH_URL, params=params)
                 resp.raise_for_status()
 
-                # Persist updated cookies
-                self._cookies = dict(resp.cookies)
-                self._save_cookies(self._cookies)
+                # Merge response cookies (API responses rarely set new ones,
+                # so we update rather than replace to keep the session alive)
+                new_cookies = dict(resp.cookies)
+                if new_cookies:
+                    self._cookies.update(new_cookies)
+                    self._save_cookies(self._cookies)
 
                 # Use content bytes — json.loads handles encoding detection
                 import json as _json
