@@ -244,7 +244,7 @@ class VintedScraper(BaseScraper):
             ),
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-GB,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate, br",
+            "Accept-Encoding": "gzip, deflate",   # no br — brotlicffi not installed
             "Referer": "https://www.vinted.com/",
             "Origin": "https://www.vinted.com",
             "Sec-Fetch-Dest": "empty",

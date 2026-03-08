@@ -67,11 +67,13 @@ class VestiaireScraper(BaseScraper):
             except PlaywrightTimeout:
                 logger.warning("[vestiaire] Page load timed out — using partial content")
 
-            # Wait for listing cards to appear
+            # Wait for any product links to appear.
+            # Vestiaire product URLs always end in .shtml — use that as the
+            # anchor selector since class names change with every deploy.
             try:
                 await page.wait_for_selector(
-                    "[data-testid='product-card'], .product-card, article.catalog-item",
-                    timeout=10_000,
+                    "a[href*='.shtml']",
+                    timeout=12_000,
                 )
             except PlaywrightTimeout:
                 logger.warning(f"[vestiaire] No listing cards found for '{keyword}'")
@@ -82,59 +84,76 @@ class VestiaireScraper(BaseScraper):
             cookies = await context.cookies()
             self._save_cookies(cookies)
 
-            # Extract listings via page.evaluate (runs in browser context)
+            # Extract listings via page.evaluate.
+            # Strategy: find all <a href="*.shtml"> links, deduplicate by
+            # product ID (last digit run before .shtml), then extract
+            # surrounding DOM data from the card container.
             raw_items = await page.evaluate("""() => {
-                const cards = document.querySelectorAll(
-                    '[data-testid="product-card"], .product-card, article.catalog-item'
-                );
                 const items = [];
-                cards.forEach(card => {
-                    try {
-                        const link = card.querySelector('a[href]');
-                        const img  = card.querySelector('img');
-                        const name = card.querySelector(
-                            '[data-testid="product-name"], .product-card__name, .catalog-item__name, h2, h3'
-                        );
-                        const priceEl = card.querySelector(
-                            '[data-testid="product-price"], .product-card__price, .price'
-                        );
-                        const sizeEl = card.querySelector(
-                            '[data-testid="product-size"], .product-card__size, .size'
-                        );
-                        const brandEl = card.querySelector(
-                            '[data-testid="product-brand"], .product-card__brand, .brand'
-                        );
-                        const condEl = card.querySelector(
-                            '[data-testid="product-condition"], .product-card__condition, .condition'
-                        );
-                        const authEl = card.querySelector(
-                            '[data-testid="authentication-badge"], .authentication-badge, .verified-badge'
-                        );
+                const seen  = new Set();
 
-                        // Extract numeric price
-                        const priceText = priceEl ? priceEl.textContent.trim() : '';
-                        const priceMatch = priceText.match(/[\\d.,]+/);
-                        const price = priceMatch
-                            ? parseFloat(priceMatch[0].replace(',', '.'))
-                            : null;
+                document.querySelectorAll('a[href*=".shtml"]').forEach(link => {
+                    const href     = link.getAttribute('href') || '';
+                    const idMatch  = href.match(/-(\\d+)\\.shtml/);
+                    if (!idMatch || seen.has(idMatch[1])) return;
+                    seen.add(idMatch[1]);
 
-                        // Extract ID from URL
-                        const href = link ? link.getAttribute('href') : '';
-                        const idMatch = href.match(/-(\\d+)\\.shtml/) || href.match(/\\/([0-9]+)\\//);
+                    // Walk up to find the card container (stop at a node
+                    // that has at least one <img> inside it)
+                    let card = link.parentElement;
+                    for (let i = 0; i < 7 && card; i++) {
+                        if (card.querySelector('img')) break;
+                        card = card.parentElement;
+                    }
+                    if (!card) card = link;
 
-                        items.push({
-                            id:                  idMatch ? idMatch[1] : '',
-                            title:               name ? name.textContent.trim() : '',
-                            price:               price,
-                            url:                 href,
-                            image_url:           img ? (img.src || img.dataset.src) : null,
-                            size:                sizeEl ? sizeEl.textContent.trim() : '',
-                            brand:               brandEl ? brandEl.textContent.trim() : '',
-                            condition:           condEl ? condEl.textContent.trim() : null,
-                            authentication_status: authEl ? 'verified' : null,
-                        });
-                    } catch (e) {}
+                    const img = card.querySelector('img');
+
+                    // Price: look for € followed by digits, or digits + €
+                    const cardText = card.innerText || '';
+                    const priceMatch = cardText.match(/€\\s*([\\d\\s,.]+)|([\\d\\s,.]+)\\s*€/);
+                    let price = null;
+                    if (priceMatch) {
+                        const raw = (priceMatch[1] || priceMatch[2] || '')
+                            .replace(/\\s/g, '').replace(',', '.');
+                        price = parseFloat(raw) || null;
+                    }
+
+                    // Title: prefer a heading or named element; fall back to
+                    // URL slug decoded
+                    const titleEl = card.querySelector(
+                        'h2, h3, h4, p, [class*="name"], [class*="title"], [class*="brand"]'
+                    );
+                    let title = titleEl ? titleEl.textContent.trim() : '';
+                    if (!title) {
+                        const slugMatch = href.match(/\\/([^/]+?)-\\d+\\.shtml/);
+                        title = slugMatch
+                            ? slugMatch[1].replace(/-/g, ' ')
+                            : '';
+                    }
+
+                    // Authentication badge (any element mentioning authenticity)
+                    const authEl = card.querySelector(
+                        '[class*="auth"], [class*="verified"], [class*="badge"]'
+                    );
+
+                    const fullUrl = href.startsWith('http')
+                        ? href
+                        : 'https://vestiairecollective.com' + href;
+
+                    items.push({
+                        id:                    idMatch[1],
+                        title:                 title,
+                        price:                 price,
+                        url:                   fullUrl,
+                        image_url:             img ? (img.src || img.dataset.src) : null,
+                        size:                  '',
+                        brand:                 '',
+                        condition:             null,
+                        authentication_status: authEl ? 'verified' : null,
+                    });
                 });
+
                 return items;
             }""")
 

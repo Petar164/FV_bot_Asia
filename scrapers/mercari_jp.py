@@ -1,50 +1,51 @@
 """
 fashionvoid-bot · scrapers/mercari_jp.py
 ─────────────────────────────────────────────────────────────────────────────
-Mercari Japan scraper — the fully-implemented reference scraper.
+Mercari Japan scraper — web page extraction via httpx.
 
-Mercari exposes a public GraphQL / JSON API used by their own SPA.
-We hit the search endpoint directly — no Playwright required for basic search.
+Mercari's JSON API (api.mercari.jp/v2/entities:search) now enforces DPoP
+auth tokens that require a real browser session to generate.
 
-Endpoint: https://api.mercari.jp/v2/entities:search
-Method   : POST (JSON body)
-Auth     : None for anonymous search (rate-limited by IP)
+Instead we GET their Next.js SSR search page and extract the embedded
+__NEXT_DATA__ JSON, which contains the first page of results server-side.
 
-Strategy
-────────
-1. POST keyword to the search API, parse response JSON
-2. Filter by size keywords appearing in title / description
-3. Filter by price ceiling (EUR converted)
-4. Return listing dicts for base class post-processing
+URL:
+    GET https://jp.mercari.com/search
+        ?keyword={keyword}
+        &sort=created_time
+        &order=desc
+        &status=on_sale
+
+The JSON path to items inside __NEXT_DATA__ varies by Mercari's deploy.
+We try several known paths before giving up.
 ─────────────────────────────────────────────────────────────────────────────
 """
 
-import asyncio
+import json as _json
 import logging
 import re
 from typing import Optional
-from uuid import uuid4
+from urllib.parse import quote_plus
+
+import httpx
 
 from .base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
 
+_SEARCH_URL = (
+    "https://jp.mercari.com/search"
+    "?keyword={keyword}&sort=created_time&order=desc&status=on_sale"
+)
+
 
 class MercariJPScraper(BaseScraper):
-    """Mercari Japan (mercari.com/jp) listing scraper."""
+    """Mercari Japan (jp.mercari.com) listing scraper via SSR page."""
 
     PLATFORM = "mercari_jp"
     CURRENCY = "JPY"
-    BASE_URL = "https://api.mercari.jp"
+    BASE_URL = "https://jp.mercari.com"
 
-    # ── Mercari search API ────────────────────────────────────────────────
-
-    _SEARCH_ENDPOINT = "https://api.mercari.jp/v2/entities:search"
-
-    # Item status: on_sale | trading | sold_out
-    _STATUS_ON_SALE = "ITEM_STATUS_ON_SALE"
-
-    # Mercari condition codes (we store these as-is for the alert)
     _CONDITION_MAP = {
         "1": "New / Unworn",
         "2": "Like New",
@@ -54,107 +55,101 @@ class MercariJPScraper(BaseScraper):
         "6": "For Parts",
     }
 
-    # Max results to request per search call (Mercari allows up to 120)
-    _PAGE_SIZE = 60
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Per-session token Mercari injects — generated client-side
-        self._dpop_uuid = str(uuid4())
-
-    # ── Search implementation ─────────────────────────────────────────────
+    # ── Search ────────────────────────────────────────────────────────────
 
     async def search(self, keyword: str, keyword_group: dict) -> list[dict]:
-        """
-        Search Mercari JP for *keyword* and return raw listing dicts.
-        Handles pagination automatically (up to 3 pages to stay polite).
-        """
+        url = _SEARCH_URL.format(keyword=quote_plus(keyword))
+        headers = self._mercari_headers()
+
+        try:
+            async with httpx.AsyncClient(
+                headers=headers,
+                timeout=httpx.Timeout(25.0, connect=10.0),
+                follow_redirects=True,
+                http2=False,
+            ) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                html = resp.text
+        except Exception as exc:
+            logger.error(f"[{self.PLATFORM}] HTTP error for '{keyword}': {exc}")
+            return []
+
+        items = self._extract_items(html)
+        if items is None:
+            logger.warning(
+                f"[{self.PLATFORM}] __NEXT_DATA__ not found or empty for '{keyword}'"
+            )
+            return []
+
         results = []
-        page_token = None
-        max_pages = 3
-
-        async with self._build_client(extra_headers=self._mercari_headers()) as client:
-            for page in range(max_pages):
-                try:
-                    payload = self._build_payload(keyword, page_token)
-                    response = await client.post(
-                        self._SEARCH_ENDPOINT,
-                        json=payload,
-                    )
-                    response.raise_for_status()
-                    data = response.json()
-                except Exception as exc:
-                    logger.error(f"[{self.PLATFORM}] Search error (page {page}): {exc}")
-                    break
-
-                items = data.get("items", [])
-                if not items:
-                    break
-
-                for item in items:
-                    listing = self._parse_item(item, keyword_group)
-                    if listing:
-                        results.append(listing)
-
-                # Pagination
-                page_token = data.get("meta", {}).get("nextPageToken")
-                if not page_token:
-                    break
-
-                # Polite pause between pages
-                await asyncio.sleep(1.5)
+        for raw in items:
+            listing = self._parse_item(raw, keyword_group)
+            if listing:
+                results.append(listing)
 
         logger.debug(f"[{self.PLATFORM}] '{keyword}' → {len(results)} raw results")
         return results
 
-    # ── Payload builder ───────────────────────────────────────────────────
+    # ── __NEXT_DATA__ extractor ───────────────────────────────────────────
 
-    def _build_payload(self, keyword: str, page_token: Optional[str] = None) -> dict:
-        """Construct the JSON payload for the Mercari search API."""
-        payload = {
-            "userId": "",
-            "pageSize": self._PAGE_SIZE,
-            "pageToken": page_token or "",
-            "searchSessionId": self._dpop_uuid,
-            "indexRouting": "INDEX_ROUTING_UNSPECIFIED",
-            "thumbnailTypes": [],
-            "searchCondition": {
-                "keyword": keyword,
-                "excludeKeyword": "",
-                "sort": "SORT_CREATED_TIME",
-                "order": "ORDER_DESC",
-                "status": ["ITEM_STATUS_ON_SALE"],
-                "sizeId": [],
-                "categoryId": [],
-                "brandId": [],
-                "sellerId": [],
-                "priceMin": 0,
-                "priceMax": 0,           # 0 = no ceiling (we filter in EUR)
-                "itemTypes": [],
-                "skuIds": [],
-                "colors": [],
-            },
-            "defaultDatasets": ["DATASET_TYPE_MERCARI", "DATASET_TYPE_BEYOND"],
-        }
-        return payload
+    @staticmethod
+    def _extract_items(html: str) -> Optional[list]:
+        """
+        Pull the __NEXT_DATA__ JSON block from the HTML and return the list
+        of items.  Tries several known paths in Mercari's page structure.
+        """
+        match = re.search(
+            r'<script[^>]+id=["\']__NEXT_DATA__["\'][^>]*>\s*(\{.*?\})\s*</script>',
+            html,
+            re.DOTALL,
+        )
+        if not match:
+            return None
+
+        try:
+            data = _json.loads(match.group(1))
+        except _json.JSONDecodeError:
+            return None
+
+        pp = data.get("props", {}).get("pageProps", {})
+
+        # Try several known paths in Mercari's SSR payload
+        for path in [
+            ["searchResult", "items"],
+            ["items"],
+            ["initialData", "result", "items"],
+            ["data", "result", "items"],
+        ]:
+            node = pp
+            for key in path:
+                if isinstance(node, dict):
+                    node = node.get(key)
+                else:
+                    node = None
+                    break
+            if isinstance(node, list) and node:
+                return node
+
+        return []
 
     # ── Item parser ───────────────────────────────────────────────────────
 
     def _parse_item(self, item: dict, keyword_group: dict) -> Optional[dict]:
-        """
-        Parse a single Mercari API item dict into our standard listing shape.
-        Returns None if the item should be skipped.
-        """
         try:
-            # Only on-sale items
-            if item.get("status") != self._STATUS_ON_SALE:
-                return None
-
             lid = item.get("id", "")
             if not lid:
                 return None
 
+            # Mercari uses different status strings depending on endpoint
+            status = item.get("status", "")
+            if status and "on_sale" not in status.lower() and "ITEM_STATUS_ON_SALE" not in status:
+                return None
+
             title = item.get("name", "").strip()
+            if not title:
+                return None
+
             price = float(item.get("price", 0))
             if price <= 0:
                 return None
@@ -164,50 +159,46 @@ class MercariJPScraper(BaseScraper):
             if sizes and not self.matches_size(title, sizes):
                 return None
 
-            # ── Build listing dict ────────────────────────────────────
-            seller = item.get("seller") or {}
             thumbnails = item.get("thumbnails") or []
-            image_url = thumbnails[0] if thumbnails else item.get("imageUrl")
+            image_url = thumbnails[0] if thumbnails else item.get("imageUrl") or item.get("image_url")
 
-            condition_id = str(item.get("itemConditionId", ""))
-            condition = self._CONDITION_MAP.get(condition_id, condition_id)
+            condition_id = str(item.get("itemConditionId", "") or item.get("item_condition_id", ""))
+            condition = self._CONDITION_MAP.get(condition_id, condition_id or None)
 
             return {
                 "id": lid,
                 "platform": self.PLATFORM,
                 "title": title,
-                "translated_title": None,    # filled by base.process_listings()
+                "translated_title": None,
                 "price": price,
                 "currency": self.CURRENCY,
-                "price_eur": None,           # filled by base.process_listings()
+                "price_eur": None,
                 "url": f"https://jp.mercari.com/item/{lid}",
                 "image_url": image_url,
                 "condition": condition,
                 "keyword_group": keyword_group.get("group", ""),
-                "is_suspicious": False,      # filled by base.process_listings()
+                "is_suspicious": False,
             }
 
         except Exception as exc:
-            logger.warning(f"[{self.PLATFORM}] Failed to parse item: {exc}")
+            logger.warning(f"[{self.PLATFORM}] Parse error: {exc}")
             return None
 
-    # ── Mercari-specific headers ───────────────────────────────────────────
+    # ── Headers ───────────────────────────────────────────────────────────
 
     @staticmethod
     def _mercari_headers() -> dict:
-        """
-        Mercari's API requires a few specific headers.
-        DPoP (Demonstrating Proof of Possession) is needed for their auth
-        layer but anonymous search works with a plausible client hint set.
-        """
         return {
-            "Authorization": "Bearer anonymous",
-            "Origin": "https://jp.mercari.com",
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "ja-JP,ja;q=0.9,en;q=0.8",
+            "Accept-Encoding": "gzip, deflate",
             "Referer": "https://jp.mercari.com/",
-            "X-Platform": "web",
-            "Accept": "application/json, text/plain, */*",
-            "Content-Type": "application/json; charset=UTF-8",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "same-origin",
         }
