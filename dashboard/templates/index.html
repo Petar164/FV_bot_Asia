@@ -494,6 +494,70 @@
       color: var(--mute); border-bottom: 1px solid var(--border);
       position: sticky; top: 0; background: var(--surface); z-index: 1;
     }
+
+    /* ── Toast notifications ─────────────────────────────────── */
+    #toast-area {
+      position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
+      z-index: 800; display: flex; flex-direction: column; align-items: center;
+      gap: 6px; pointer-events: none;
+    }
+    .toast {
+      background: rgba(10,10,10,.96); border: 1px solid var(--border2);
+      padding: 6px 18px; font-size: 8px; letter-spacing: 2.5px;
+      text-transform: uppercase; color: var(--accent); white-space: nowrap;
+      animation: toast-slide 3s ease forwards;
+    }
+    @keyframes toast-slide {
+      0%   { opacity:0; transform:translateY(-8px); }
+      12%  { opacity:1; transform:translateY(0); }
+      75%  { opacity:1; transform:translateY(0); }
+      100% { opacity:0; transform:translateY(-6px); }
+    }
+
+    /* ── Settings button in sidebar ──────────────────────────── */
+    .settings-btn {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; padding: 10px 16px; margin-top: auto;
+      background: transparent; border: none; border-top: 1px solid var(--border);
+      color: var(--dim); cursor: pointer; font-size: 9px; letter-spacing: 2px;
+      text-transform: uppercase; font-family: inherit; transition: color .15s;
+      text-align: left;
+    }
+    .settings-btn:hover { color: var(--accent); }
+
+    /* ── Settings overlay ────────────────────────────────────── */
+    #settings-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.65);
+      z-index: 600; display: none; align-items: flex-end; justify-content: flex-start;
+    }
+    #settings-overlay.open { display: flex; }
+    #settings-panel {
+      background: var(--surface); border: 1px solid var(--border2);
+      border-bottom: none; border-left: none;
+      width: var(--ls); display: flex; flex-direction: column;
+      margin-bottom: 0;
+    }
+    #settings-hd {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    #settings-hd span { font-size: 8px; letter-spacing: 3px; text-transform: uppercase; color: var(--accent); }
+    #settings-x {
+      width: 24px; height: 24px; border: 1px solid var(--border2); border-radius: 2px;
+      background: transparent; color: var(--dim); cursor: pointer; font-size: 12px;
+      display: flex; align-items: center; justify-content: center; transition: all .15s;
+    }
+    #settings-x:hover { border-color: var(--accent); color: var(--accent); }
+    #settings-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 14px; }
+    .set-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .set-lbl { font-size: 9px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--dim); }
+    .set-swatches { display: flex; gap: 5px; flex-wrap: wrap; }
+    .swatch {
+      width: 18px; height: 18px; border-radius: 2px; cursor: pointer; border: 2px solid transparent;
+      transition: border-color .15s, transform .1s;
+    }
+    .swatch:hover { transform: scale(1.15); }
+    .swatch.active { border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -645,6 +709,13 @@
         <span class="bm-open-cnt" id="bm-cnt"></span>
       </button>
     </div>
+    <button class="settings-btn" onclick="openSettings()">
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" stroke-width="1.1">
+        <circle cx="5.5" cy="5.5" r="1.8"/>
+        <path d="M5.5 1v1M5.5 9v1M1 5.5h1M9 5.5h1M2.4 2.4l.7.7M7.9 7.9l.7.7M7.9 2.4l-.7.7M2.4 7.9l.7-.7"/>
+      </svg>
+      Settings
+    </button>
   </aside>
 
   <!-- Globe -->
@@ -706,6 +777,47 @@
   </div>
 </div>
 
+<div id="toast-area"></div>
+
+<!-- Settings panel -->
+<div id="settings-overlay" onclick="settingsOverlayClick(event)">
+  <div id="settings-panel">
+    <div id="settings-hd">
+      <span>Settings</span>
+      <button id="settings-x" onclick="closeSettings()">&#x2715;</button>
+    </div>
+    <div id="settings-body">
+      <div class="set-row">
+        <span class="set-lbl">Notification sound</span>
+        <label class="tog">
+          <input type="checkbox" id="snd-tog" checked onchange="setSoundEnabled(this.checked)"/>
+          <div class="tog-tr"></div><div class="tog-th"></div>
+        </label>
+      </div>
+      <div>
+        <div class="set-lbl" style="margin-bottom:8px">Globe colour</div>
+        <div class="set-swatches" id="globe-swatches">
+          <div class="swatch active" style="background:#7AE1FF" data-color="#7AE1FF" onclick="setGlobeColor(this)" title="Cyan"></div>
+          <div class="swatch" style="background:#FFB347" data-color="#FFB347" onclick="setGlobeColor(this)" title="Amber"></div>
+          <div class="swatch" style="background:#00E87A" data-color="#00E87A" onclick="setGlobeColor(this)" title="Green"></div>
+          <div class="swatch" style="background:#FF4060" data-color="#FF4060" onclick="setGlobeColor(this)" title="Red"></div>
+          <div class="swatch" style="background:#CC88FF" data-color="#CC88FF" onclick="setGlobeColor(this)" title="Purple"></div>
+          <div class="swatch" style="background:#DDDDDD" data-color="#DDDDDD" onclick="setGlobeColor(this)" title="White"></div>
+        </div>
+      </div>
+      <div>
+        <div class="set-lbl" style="margin-bottom:8px">Background</div>
+        <div class="set-swatches" id="bg-swatches">
+          <div class="swatch active" style="background:#060606;border-color:#333" data-bg="#060606" onclick="setBgColor(this)" title="Default dark"></div>
+          <div class="swatch" style="background:#000000;border-color:#333" data-bg="#000000" onclick="setBgColor(this)" title="Pure black"></div>
+          <div class="swatch" style="background:#04080F;border-color:#333" data-bg="#04080F" onclick="setBgColor(this)" title="Deep blue-black"></div>
+          <div class="swatch" style="background:#0A0005;border-color:#333" data-bg="#0A0005" onclick="setBgColor(this)" title="Dark purple"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Bookmarks panel -->
 <div id="bm-overlay" onclick="bmOverlayClick(event)">
   <div id="bm-panel">
@@ -722,15 +834,16 @@
 let globe = null, globeData = [];
 let activeCountry = null, showVat = false;
 let _pinObjects = {}; // { country: { group, cardEl, data } }
+let _globeMats = []; // stored so settings can recolor them
 
 const DEFAULT_COUNTRIES = [
   // ── EU platforms ─────────────────────────────────────────────────────────
-  {country:'vinted',     name:'Vinted',     flag:'🛍', lon:4.9041,  lat:52.3676, total:0, suspicious:0, platforms:['vinted'],     region:'EU', platformLabel:'EU — Vinted'},
-  {country:'vestiaire',  name:'Vestiaire',  flag:'✦',  lon:12.4964, lat:41.9028, total:0, suspicious:0, platforms:['vestiaire'],  region:'EU', platformLabel:'EU — Vestiaire Collective'},
+  {country:'vinted',     name:'Vinted',     flag:'🛍', lon:4.9041,  lat:52.3676, total:0, suspicious:0, platforms:['vinted'],     region:'EU', platformLabel:'EU — Vinted',               cardOffset:[-72, -10]},
+  {country:'vestiaire',  name:'Vestiaire',  flag:'✦',  lon:12.4964, lat:41.9028, total:0, suspicious:0, platforms:['vestiaire'],  region:'EU', platformLabel:'EU — Vestiaire Collective',   cardOffset:[14, 10]},
   // ── Asia platforms ────────────────────────────────────────────────────────
-  {country:'japan', name:'Japan',       flag:'🇯🇵', lon:139.6917, lat:35.6895, total:0, suspicious:0, platforms:['mercari_jp','yahoo_auctions','rakuma'], timezone:'Asia/Tokyo',    tzLabel:'JST'},
-  {country:'korea', name:'South Korea', flag:'🇰🇷', lon:126.9780, lat:37.5665, total:0, suspicious:0, platforms:['bunjang'],                               timezone:'Asia/Seoul',    tzLabel:'KST'},
-  {country:'china', name:'China',       flag:'🇨🇳', lon:116.4074, lat:39.9042, total:0, suspicious:0, platforms:['xianyu'],                                timezone:'Asia/Shanghai', tzLabel:'CST'},
+  {country:'japan', name:'Japan',       flag:'🇯🇵', lon:139.6917, lat:35.6895, total:0, suspicious:0, platforms:['mercari_jp','yahoo_auctions','rakuma'], timezone:'Asia/Tokyo',    tzLabel:'JST', cardOffset:[50, 15]},
+  {country:'korea', name:'South Korea', flag:'🇰🇷', lon:126.9780, lat:37.5665, total:0, suspicious:0, platforms:['bunjang'],                               timezone:'Asia/Seoul',    tzLabel:'KST', cardOffset:[-20, -70]},
+  {country:'china', name:'China',       flag:'🇨🇳', lon:116.4074, lat:39.9042, total:0, suspicious:0, platforms:['xianyu'],                                timezone:'Asia/Shanghai', tzLabel:'CST', cardOffset:[-85, 25]},
 ];
 globeData = [...DEFAULT_COUNTRIES];
 
@@ -745,6 +858,10 @@ function updateTodBadge() {
 function buildPinCard(d) {
   const el = document.createElement('div');
   _renderPinCard(el, d);
+  if (d.cardOffset) {
+    el.style.marginLeft = d.cardOffset[0] + 'px';
+    el.style.marginTop  = d.cardOffset[1] + 'px';
+  }
   return el;
 }
 function _renderPinCard(el, d) {
@@ -994,18 +1111,20 @@ async function initGlobe() {
   } catch(e) { console.warn('land-110m load failed', e); }
 
   // Edge dots (coastlines) — built synchronously
-  const edgeMat = _makePointsMat(THREE, '#7AE1FF', 0.006, 0.3, dotTex);
+  const edgeMat = _makePointsMat(THREE, localStorage.getItem('globeColor')||'#7AE1FF', 0.006, 0.3, dotTex);
   const edgePos = _buildEdges(polys);
   const edgeGeo = new THREE.BufferGeometry();
   edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(edgePos, 3));
   globeGroup.add(new THREE.Points(edgeGeo, edgeMat));
+  _globeMats.push(edgeMat);
 
   // Fill dots (land interior) — built in a Worker, added when ready
-  const fillMat = _makePointsMat(THREE, '#7AE1FF', 0.004, 0.3, dotTex, 0.6);
+  const fillMat = _makePointsMat(THREE, localStorage.getItem('globeColor')||'#7AE1FF', 0.004, 0.3, dotTex, 0.6);
   _buildFillWorker(geoPolys).then(fillPos => {
     const fillGeo = new THREE.BufferGeometry();
     fillGeo.setAttribute('position', new THREE.Float32BufferAttribute(fillPos, 3));
     globeGroup.add(new THREE.Points(fillGeo, fillMat));
+    _globeMats.push(fillMat);
   }).catch(e => console.warn('fill worker error', e));
 
   // CSS2D renderer for floating pin labels
@@ -1085,11 +1204,21 @@ async function initGlobe() {
     labelRenderer.setSize(nw, nh);
   });
 
-  // Stop auto-rotate on first interaction
+  // Stop auto-rotate while dragging; resume 2.5s after release
+  let _interactTimer = null;
   el.addEventListener('pointerdown', () => {
     controls.autoRotate = false;
     document.getElementById('hint').style.opacity = '0';
-  }, {once:true});
+    clearTimeout(_interactTimer);
+  });
+  el.addEventListener('pointerup', () => {
+    clearTimeout(_interactTimer);
+    _interactTimer = setTimeout(() => { controls.autoRotate = true; }, 2500);
+  });
+  el.addEventListener('pointerleave', () => {
+    clearTimeout(_interactTimer);
+    _interactTimer = setTimeout(() => { controls.autoRotate = true; }, 2500);
+  });
 
   globe = {renderer, scene, camera, controls, composer, labelRenderer};
   updateTodBadge();
@@ -1118,6 +1247,7 @@ sse.onmessage=e=>{
   set('st-alerts',(db.alerts_sent??'—').toLocaleString());
   Object.entries(db.by_platform||{}).forEach(([p,n])=>{ const el=document.getElementById('cnt-'+p); if(el) el.textContent=n.toLocaleString(); });
   Object.entries(platforms).forEach(([p,s])=>{ const d=document.getElementById('dot-'+p); if(d) d.className='sdot'+(s.status==='OK'?' ok':s.status==='ERR'?' err':''); });
+  checkNewListings(db.by_platform||{});
   refreshGlobe();
 };
 
@@ -1225,6 +1355,112 @@ function setSort(mode,btn) {
 }
 function toggleVat(on) { showVat=on; applyVat(); }
 function applyVat() { document.querySelectorAll('.lr-vat').forEach(e=>e.classList.toggle('show',showVat)); }
+
+// ── Toast notifications ───────────────────────────────────────────────────────
+let _prevCounts = {};
+let _audioCtx = null;
+let _soundEnabled = localStorage.getItem('soundEnabled') !== 'false';
+
+const _PLAT_NAMES = {
+  vinted:'Vinted', vestiaire:'Vestiaire', mercari_jp:'Mercari JP',
+  yahoo_auctions:'Yahoo Auctions', bunjang:'Bunjang', xianyu:'Xianyu', rakuma:'Rakuma',
+};
+
+function pingSound() {
+  if (!_soundEnabled) return;
+  try {
+    if (!_audioCtx) _audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const osc = _audioCtx.createOscillator();
+    const gain = _audioCtx.createGain();
+    osc.connect(gain); gain.connect(_audioCtx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1046, _audioCtx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(698, _audioCtx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.08, _audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, _audioCtx.currentTime + 0.35);
+    osc.start(); osc.stop(_audioCtx.currentTime + 0.35);
+  } catch(e) {}
+}
+
+function showToast(msg) {
+  const area = document.getElementById('toast-area');
+  if (!area) return;
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  area.appendChild(t);
+  setTimeout(() => t.remove(), 3100);
+}
+
+function checkNewListings(byPlatform) {
+  let any = false;
+  for (const [p, n] of Object.entries(byPlatform)) {
+    if (_prevCounts[p] !== undefined && n > _prevCounts[p]) {
+      const diff = n - _prevCounts[p];
+      showToast(`${diff} new listing${diff>1?'s':''} — ${_PLAT_NAMES[p]||p}`);
+      any = true;
+    }
+    _prevCounts[p] = n;
+  }
+  if (any) pingSound();
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+function openSettings() { document.getElementById('settings-overlay').classList.add('open'); }
+function closeSettings() { document.getElementById('settings-overlay').classList.remove('open'); }
+function settingsOverlayClick(e) { if (e.target===document.getElementById('settings-overlay')) closeSettings(); }
+
+function setSoundEnabled(on) {
+  _soundEnabled = on;
+  localStorage.setItem('soundEnabled', on);
+}
+
+function setGlobeColor(el) {
+  const color = el.dataset.color;
+  document.querySelectorAll('#globe-swatches .swatch').forEach(s=>s.classList.remove('active'));
+  el.classList.add('active');
+  localStorage.setItem('globeColor', color);
+  const THREE_Color = _globeMats[0]?.color?.constructor;
+  _globeMats.forEach(m => { if (m && m.color) { m.color.set(color); m.needsUpdate = true; } });
+  // Update pin sphere + halo dots too
+  if (globe) {
+    globe.scene.traverse(obj => {
+      if (obj.isMesh && obj.material?.color && obj.geometry?.type === 'SphereGeometry') {
+        obj.material.color.set(color);
+      }
+      if (obj.isSprite && obj.material?.color) { obj.material.color.set(color); }
+    });
+  }
+}
+
+function setBgColor(el) {
+  const bg = el.dataset.bg;
+  document.querySelectorAll('#bg-swatches .swatch').forEach(s=>s.classList.remove('active'));
+  el.classList.add('active');
+  localStorage.setItem('bgColor', bg);
+  document.body.style.background = bg;
+  document.getElementById('shell').style.background = bg;
+  const gw = document.getElementById('globe-wrap');
+  if (gw) gw.style.background = `radial-gradient(ellipse at 58% 50%, ${bg}dd 0%, ${bg} 62%)`;
+}
+
+function applyStoredSettings() {
+  // Sound toggle
+  const sndTog = document.getElementById('snd-tog');
+  if (sndTog) sndTog.checked = _soundEnabled;
+  // Background
+  const bg = localStorage.getItem('bgColor');
+  if (bg) {
+    setBgColor(document.querySelector(`#bg-swatches .swatch[data-bg="${bg}"]`) || {dataset:{bg}, classList:{add:()=>{},remove:()=>{}}});
+  }
+  // Globe color swatch active state (color itself applied on mat creation)
+  const gc = localStorage.getItem('globeColor');
+  if (gc) {
+    document.querySelectorAll('#globe-swatches .swatch').forEach(s=>{
+      s.classList.toggle('active', s.dataset.color===gc);
+    });
+  }
+}
 
 // ── Bookmarks ─────────────────────────────────────────────────────────────────
 let _bmCount = 0;
@@ -1639,6 +1875,7 @@ function x(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 initGlobe().then(refreshGlobe);
 initScrapingStatus();
 initBookmarks();
+applyStoredSettings();
 setInterval(refreshGlobe, 15000);
 </script>
 </body>
