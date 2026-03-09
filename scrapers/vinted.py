@@ -1,41 +1,56 @@
 """
 fashionvoid-bot · scrapers/vinted.py
 ─────────────────────────────────────────────────────────────────────────────
-Vinted EU scraper — JSON API, no Playwright needed.
+Vinted EU scraper — camoufox browser + multi-strategy extraction.
 
-Vinted exposes a public catalog API used by their own web app.
-We persist a cookie jar in sessions/vinted/ so the session token survives
-process restarts.  No login required for read-only search.
+Cloudflare Bot Management blocks plain Playwright/httpx on vinted.com.
+Strategy stack (tried in order):
 
-Endpoint:
-    GET https://www.vinted.com/api/v2/catalog/items
-        ?search_text={keyword}
-        &per_page=96
-        &order=newest_first
+  1. camoufox on vinted.fr (Firefox stealth, passes CF BM)
+       a. Intercept /api/v2/catalog/items network response
+       b. Extract __NEXT_DATA__ SSR JSON embedded in page HTML
+       c. DOM scrape rendered item cards
 
-Auth:
-    Session cookie obtained by hitting the root page once.
-    Cookie jar serialised to sessions/vinted/cookies.json after each request.
+  2. Plain Playwright Chromium fallback (works occasionally from clean IPs)
 ─────────────────────────────────────────────────────────────────────────────
 """
 
-import asyncio
 import json
 import logging
-from pathlib import Path
+import sys
 from typing import Optional
+from urllib.parse import quote_plus
 
-import httpx
+from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 
 from .base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
 
-_SESSION_DIR = Path(__file__).parent.parent / "sessions" / "vinted"
-_COOKIE_FILE = _SESSION_DIR / "cookies.json"
+# vinted.fr search URL — French locale passes CF more reliably than .com
+_SEARCH_URL = (
+    "https://www.vinted.fr/catalog"
+    "?search_text={keyword}&order=newest_first&per_page=96"
+)
+_API_PATTERN = "/api/v2/catalog/items"
 
-_SEARCH_URL = "https://www.vinted.com/api/v2/catalog/items"
-_ROOT_URL = "https://www.vinted.com"
+# Selectors for cookie/GDPR consent modal — multiple providers used on Vinted
+_CONSENT_SELECTORS = [
+    "button[id*='accept']",
+    "button[class*='accept']",
+    "button[data-testid*='accept']",
+    "[id*='onetrust-accept']",
+    "[class*='onetrust-accept']",
+    "#didomi-notice-agree-button",
+    "button[title*='Accept']",
+    "button[aria-label*='Accept']",
+    "button[aria-label*='Accepter']",
+    "button:has-text('Accept all')",
+    "button:has-text('Accepter tout')",
+    "button:has-text('Tout accepter')",
+    "button:has-text('I agree')",
+    "button:has-text('OK')",
+]
 
 # Vinted condition codes → human label
 _CONDITION_MAP = {
@@ -46,86 +61,303 @@ _CONDITION_MAP = {
 }
 
 
+def _try_load_camoufox():
+    """Import camoufox, applying PyYAML CLoader polyfill if needed."""
+    try:
+        import yaml as _yaml
+        if not hasattr(_yaml, "CLoader") or _yaml.CLoader is None:
+            _yaml.CLoader = _yaml.Loader
+            sys.modules["yaml"] = _yaml
+        from camoufox.async_api import AsyncCamoufox  # noqa: F401
+        return AsyncCamoufox
+    except Exception as exc:
+        logger.debug(f"[vinted] camoufox not available: {exc}")
+        return None
+
+
 class VintedScraper(BaseScraper):
-    """Vinted EU listing scraper."""
+    """Vinted EU listing scraper — camoufox + multi-strategy extraction."""
 
     PLATFORM = "vinted"
     CURRENCY = "EUR"
-    BASE_URL = "https://www.vinted.com"
-    NEEDS_TRANSLATION = False   # listings already in a Latin-script EU language
-
-    _PAGE_SIZE = 96
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._cookies: dict = self._load_cookies()
+    BASE_URL = "https://www.vinted.fr"
+    NEEDS_TRANSLATION = False
 
     # ── Search ────────────────────────────────────────────────────────────
 
     async def search(self, keyword: str, keyword_group: dict) -> list[dict]:
-        await self._ensure_session()
+        AsyncCamoufox = _try_load_camoufox()
 
-        params = {
-            "search_text": keyword,
-            "per_page": self._PAGE_SIZE,
-            "order": "newest_first",
-        }
+        if AsyncCamoufox:
+            items = await self._search_camoufox(keyword, AsyncCamoufox)
+        else:
+            items = await self._search_playwright(keyword)
 
-        headers = self._vinted_headers()
-        proxies = None
-        if self.proxy:
-            proxy_url = self.proxy.get_proxy()
-            if proxy_url:
-                proxies = {"http://": proxy_url, "https://": proxy_url}
-
-        try:
-            async with httpx.AsyncClient(
-                headers=headers,
-                cookies=self._cookies,
-                proxies=proxies,
-                timeout=httpx.Timeout(20.0, connect=10.0),
-                follow_redirects=True,
-                http2=False,   # disable HTTP/2 to avoid compression encoding issues
-            ) as client:
-                resp = await client.get(_SEARCH_URL, params=params)
-                resp.raise_for_status()
-
-                # Merge response cookies (API responses rarely set new ones,
-                # so we update rather than replace to keep the session alive)
-                new_cookies = dict(resp.cookies)
-                if new_cookies:
-                    self._cookies.update(new_cookies)
-                    self._save_cookies(self._cookies)
-
-                # Use content bytes — json.loads handles encoding detection
-                import json as _json
-                data = _json.loads(resp.content)
-
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code in (401, 403):
-                # Session expired — clear cookies and retry once
-                logger.warning("[vinted] Session expired, refreshing…")
-                self._cookies = {}
-                _COOKIE_FILE.unlink(missing_ok=True)
-                await self._ensure_session()
-                return await self.search(keyword, keyword_group)
-            logger.error(f"[vinted] HTTP {exc.response.status_code} for '{keyword}'")
-            return []
-        except Exception as exc:
-            logger.error(f"[vinted] Search error for '{keyword}': {exc}")
-            return []
-
-        items = data.get("items", [])
-        results = []
         sizes = keyword_group.get("size_filter", [])
-
-        for item in items:
-            listing = self._parse_item(item, keyword_group, sizes)
+        results = []
+        for raw in items:
+            listing = self._parse_item(raw, keyword_group, sizes)
             if listing:
                 results.append(listing)
 
-        logger.debug(f"[vinted] '{keyword}' → {len(results)} results")
+        logger.debug(f"[{self.PLATFORM}] '{keyword}' → {len(results)} results")
         return results
+
+    # ── camoufox path (primary) ───────────────────────────────────────────
+
+    async def _search_camoufox(self, keyword: str, AsyncCamoufox) -> list[dict]:
+        url = _SEARCH_URL.format(keyword=quote_plus(keyword))
+        captured: list[dict] = []
+
+        try:
+            async with AsyncCamoufox(headless=True) as browser:
+                page = await browser.new_page()
+
+                # ── Intercept API responses ────────────────────────────
+                async def on_response(response):
+                    url = response.url
+                    # Log all vinted API calls at debug level to aid diagnosis
+                    if "vinted" in url and "/api/" in url:
+                        logger.debug(
+                            f"[{self.PLATFORM}] API call: {response.status} {url[:120]}"
+                        )
+                    if _API_PATTERN not in url:
+                        return
+                    if response.status != 200:
+                        return
+                    try:
+                        data = await response.json()
+                        items = data.get("items", [])
+                        if items:
+                            captured.extend(items)
+                            logger.debug(
+                                f"[{self.PLATFORM}] API captured {len(items)} items"
+                            )
+                    except Exception:
+                        pass
+
+                page.on("response", on_response)
+
+                # Navigate — use domcontentloaded to avoid infinite waits
+                try:
+                    await page.goto(url, wait_until="domcontentloaded", timeout=35_000)
+                except PlaywrightTimeout:
+                    logger.warning(
+                        f"[{self.PLATFORM}] Navigation timeout for '{keyword}' — continuing"
+                    )
+
+                # ── Dismiss cookie/GDPR consent modal ─────────────────
+                await self._dismiss_consent(page)
+
+                # Wait up to 12s for API call to fire after consent
+                try:
+                    await page.wait_for_timeout(12_000)
+                except Exception:
+                    pass
+
+                # ── If API captured items, we're done ─────────────────
+                if captured:
+                    return captured
+
+                # ── Fallback 1: __NEXT_DATA__ SSR JSON ────────────────
+                next_items = await self._extract_next_data(page)
+                if next_items:
+                    logger.debug(
+                        f"[{self.PLATFORM}] __NEXT_DATA__ yielded {len(next_items)} items"
+                    )
+                    return next_items
+
+                # ── Fallback 2: DOM scraping ───────────────────────────
+                dom_items = await self._extract_dom(page, keyword)
+                if dom_items:
+                    logger.debug(
+                        f"[{self.PLATFORM}] DOM scraping yielded {len(dom_items)} items"
+                    )
+                    return dom_items
+
+                logger.warning(f"[{self.PLATFORM}] All extraction strategies failed for '{keyword}'")
+
+        except Exception as exc:
+            logger.error(f"[{self.PLATFORM}] camoufox error: {exc}", exc_info=True)
+
+        return []
+
+    # ── Cookie consent dismissal ──────────────────────────────────────────
+
+    async def _dismiss_consent(self, page) -> None:
+        """Try every known consent-accept selector; also check shadow DOM / iframes."""
+        for sel in _CONSENT_SELECTORS:
+            try:
+                btn = page.locator(sel).first
+                if await btn.is_visible(timeout=300):
+                    await btn.click(timeout=1_000)
+                    logger.debug(f"[{self.PLATFORM}] Clicked consent: {sel}")
+                    await page.wait_for_timeout(800)
+                    return
+            except Exception:
+                continue
+
+        # Also try inside any iframes
+        try:
+            for frame in page.frames:
+                if frame is page.main_frame:
+                    continue
+                for sel in _CONSENT_SELECTORS:
+                    try:
+                        btn = frame.locator(sel).first
+                        if await btn.is_visible(timeout=300):
+                            await btn.click(timeout=1_000)
+                            logger.debug(
+                                f"[{self.PLATFORM}] Clicked consent in iframe: {sel}"
+                            )
+                            await page.wait_for_timeout(800)
+                            return
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+    # ── __NEXT_DATA__ extraction ──────────────────────────────────────────
+
+    async def _extract_next_data(self, page) -> list[dict]:
+        """Extract catalog items from Next.js SSR hydration JSON."""
+        try:
+            raw = await page.evaluate("""() => {
+                const el = document.getElementById('__NEXT_DATA__');
+                return el ? el.textContent : null;
+            }""")
+            if not raw:
+                return []
+
+            data = json.loads(raw)
+            return list(_walk_for_items(data))
+
+        except Exception as exc:
+            logger.debug(f"[{self.PLATFORM}] __NEXT_DATA__ extraction failed: {exc}")
+            return []
+
+    # ── DOM scraping fallback ─────────────────────────────────────────────
+
+    async def _extract_dom(self, page, keyword: str) -> list[dict]:
+        """
+        Parse Vinted item cards from the rendered DOM.
+        Vinted renders into .feed-grid__item cards with data-testid attributes.
+        Pattern: product-item-id-{itemId}--{field}
+        """
+        try:
+            items_json = await page.evaluate(r"""() => {
+                const results = [];
+                const cards = [...document.querySelectorAll('.feed-grid__item')];
+
+                for (const card of cards) {
+                    // Item ID + title from URL
+                    const link = card.querySelector('a[href*="/items/"]');
+                    if (!link) continue;
+                    const href = link.href || '';
+                    const idMatch = href.match(/\/items\/(\d+)-([^?#]+)/);
+                    if (!idMatch) continue;
+                    const id       = idMatch[1];
+                    const slugTitle = idMatch[2].replace(/-/g, ' ');
+
+                    // Price (seller price, not total)
+                    const priceEl = card.querySelector('[data-testid$="--price-text"]');
+                    const priceRaw = priceEl ? priceEl.textContent.trim() : '';
+                    // Strip everything except digits and comma/dot
+                    const priceStr = priceRaw.replace(/[^\d,]/g, '').replace(',', '.');
+                    const price = parseFloat(priceStr) || 0;
+                    if (price <= 0) continue;
+
+                    // Image
+                    const imgEl = card.querySelector('img');
+                    const imageUrl = imgEl ? (imgEl.src || imgEl.getAttribute('data-src') || '') : '';
+
+                    // Brand from description-title
+                    const brandEl = card.querySelector('[data-testid$="--description-title"]');
+                    const brand = brandEl ? brandEl.textContent.trim() : '';
+
+                    // Size/condition from subtitle
+                    const subtitleEl = card.querySelector('[data-testid$="--description-subtitle"]');
+                    const subtitle = subtitleEl ? subtitleEl.textContent.trim() : '';
+
+                    // Clean URL (remove referrer param)
+                    const cleanUrl = href.split('?')[0];
+
+                    results.push({ id, title: slugTitle, brand, price, imageUrl, url: cleanUrl, subtitle });
+                }
+                return results;
+            }""")
+
+            # Convert to the raw item shape _parse_item expects
+            out = []
+            for item in (items_json or []):
+                if not item.get("id") or not item.get("title") or item.get("price", 0) <= 0:
+                    continue
+                out.append({
+                    "id":          item["id"],
+                    "title":       item["title"],
+                    "price":       item["price"],
+                    "currency":    "EUR",
+                    "url":         item.get("url", ""),
+                    "photo":       {"url": item.get("imageUrl") or ""},
+                    "status":      None,
+                    "brand_title": item.get("brand", ""),
+                    "size_title":  item.get("subtitle", ""),
+                })
+            return out
+
+        except Exception as exc:
+            logger.debug(f"[{self.PLATFORM}] DOM extraction failed: {exc}")
+            return []
+
+    # ── Plain Playwright fallback (no camoufox) ───────────────────────────
+
+    async def _search_playwright(self, keyword: str) -> list[dict]:
+        url = _SEARCH_URL.format(keyword=quote_plus(keyword))
+        captured: list[dict] = []
+
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-dev-shm-usage",
+                      "--disable-blink-features=AutomationControlled"],
+            )
+            context = await browser.new_context(
+                user_agent=self._random_ua(),
+                locale="fr-FR",
+                viewport={"width": 1280, "height": 900},
+            )
+            page = await context.new_page()
+            await page.add_init_script(
+                "Object.defineProperty(navigator,'webdriver',{get:()=>undefined})"
+            )
+
+            async def on_response(response):
+                if _API_PATTERN not in response.url:
+                    return
+                if response.status != 200:
+                    return
+                try:
+                    data = await response.json()
+                    items = data.get("items", [])
+                    if items:
+                        captured.extend(items)
+                except Exception:
+                    pass
+
+            page.on("response", on_response)
+
+            try:
+                await page.goto(url, wait_until="networkidle", timeout=35_000)
+            except PlaywrightTimeout:
+                logger.warning(
+                    f"[{self.PLATFORM}] Page load timed out for '{keyword}' — using partial results"
+                )
+            except Exception as exc:
+                logger.error(f"[{self.PLATFORM}] Error for '{keyword}': {exc}", exc_info=True)
+            finally:
+                await browser.close()
+
+        return captured
 
     # ── Parser ────────────────────────────────────────────────────────────
 
@@ -141,7 +373,6 @@ class VintedScraper(BaseScraper):
             if not title:
                 return None
 
-            # Price — Vinted returns price as a string "25.00"
             price_raw = item.get("price")
             if price_raw is None:
                 return None
@@ -154,33 +385,29 @@ class VintedScraper(BaseScraper):
 
             currency = item.get("currency", "EUR").upper()
 
-            # Size filter
-            size_title = item.get("size_title", "")
+            size_title = item.get("size_title", "") or ""
             if sizes and not self.matches_size(f"{title} {size_title}", sizes):
                 return None
 
-            # Photo
             photo = item.get("photo") or {}
             image_url = photo.get("url") or photo.get("full_size_url")
 
-            # Condition
             cond_id = str(item.get("status", ""))
             condition = _CONDITION_MAP.get(cond_id, cond_id) or None
 
-            # Brand
             brand = ""
             if isinstance(item.get("brand_title"), str):
                 brand = item["brand_title"]
 
-            url = item.get("url") or f"https://www.vinted.com/items/{lid}"
+            url = item.get("url") or f"https://www.vinted.fr/items/{lid}"
             if not url.startswith("http"):
-                url = f"https://www.vinted.com{url}"
+                url = f"https://www.vinted.fr{url}"
 
             return {
                 "id": lid,
                 "platform": self.PLATFORM,
                 "title": title,
-                "translated_title": title,   # no translation for EU
+                "translated_title": title,
                 "price": price,
                 "currency": currency,
                 "price_eur": price if currency == "EUR" else None,
@@ -194,64 +421,35 @@ class VintedScraper(BaseScraper):
             }
 
         except Exception as exc:
-            logger.warning(f"[vinted] Failed to parse item: {exc}")
+            logger.warning(f"[{self.PLATFORM}] Failed to parse item: {exc}")
             return None
 
-    # ── Session management ────────────────────────────────────────────────
 
-    async def _ensure_session(self) -> None:
-        """Hit the root page to obtain a valid session cookie if we don't have one."""
-        if self._cookies:
-            return
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-        logger.info("[vinted] Obtaining new session cookie…")
-        try:
-            async with httpx.AsyncClient(
-                headers=self._vinted_headers(),
-                timeout=15.0,
-                follow_redirects=True,
-            ) as client:
-                resp = await client.get(_ROOT_URL)
-                self._cookies = dict(resp.cookies)
-                self._save_cookies(self._cookies)
-                logger.info(f"[vinted] Session obtained ({len(self._cookies)} cookies)")
-        except Exception as exc:
-            logger.warning(f"[vinted] Could not obtain session: {exc}")
+def _walk_for_items(obj, depth: int = 0) -> list:
+    """
+    Recursively walk the __NEXT_DATA__ JSON tree looking for arrays that
+    look like Vinted catalog item lists (contain dicts with 'id' and 'price').
+    Returns the first matching array found.
+    """
+    if depth > 10:
+        return []
 
-    def _load_cookies(self) -> dict:
-        if _COOKIE_FILE.exists():
-            try:
-                return json.loads(_COOKIE_FILE.read_text(encoding="utf-8"))
-            except Exception:
-                pass
-        return {}
+    if isinstance(obj, list) and len(obj) > 0:
+        first = obj[0]
+        if isinstance(first, dict) and "id" in first and "price" in first:
+            return obj
 
-    def _save_cookies(self, cookies: dict) -> None:
-        try:
-            _SESSION_DIR.mkdir(parents=True, exist_ok=True)
-            _COOKIE_FILE.write_text(
-                json.dumps(cookies, indent=2), encoding="utf-8"
-            )
-        except Exception as exc:
-            logger.debug(f"[vinted] Could not save cookies: {exc}")
+    if isinstance(obj, dict):
+        for val in obj.values():
+            result = _walk_for_items(val, depth + 1)
+            if result:
+                return result
+    elif isinstance(obj, list):
+        for item in obj:
+            result = _walk_for_items(item, depth + 1)
+            if result:
+                return result
 
-    # ── Headers ───────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _vinted_headers() -> dict:
-        return {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "en-GB,en;q=0.9",
-            "Accept-Encoding": "gzip, deflate",   # no br — brotlicffi not installed
-            "Referer": "https://www.vinted.com/",
-            "Origin": "https://www.vinted.com",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
-            "DNT": "1",
-        }
+    return []

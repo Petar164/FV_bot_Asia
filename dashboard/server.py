@@ -26,6 +26,7 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 import yaml
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
@@ -91,15 +92,19 @@ async def api_stats():
 # ── Country → platform mapping ────────────────────────────────────────────────
 
 _COUNTRY_PLATFORMS = {
-    "japan":  ["mercari_jp", "yahoo_auctions", "rakuma"],
-    "korea":  ["bunjang"],
-    "china":  ["xianyu"],
+    "japan":    ["mercari_jp", "yahoo_auctions", "rakuma"],
+    "korea":    ["bunjang"],
+    "china":    ["xianyu"],
+    "vinted":   ["vinted"],
+    "vestiaire":["vestiaire"],
 }
 
 _COUNTRY_META = {
-    "japan": {"lat": 36.2048, "lng": 138.2529, "name": "Japan",       "flag": "🇯🇵"},
-    "korea": {"lat": 37.5665, "lng": 126.9780, "name": "South Korea", "flag": "🇰🇷"},
-    "china": {"lat": 31.2304, "lng": 121.4737, "name": "China",       "flag": "🇨🇳"},
+    "japan":     {"lat": 36.2048, "lng": 138.2529, "name": "Japan",       "flag": "🇯🇵"},
+    "korea":     {"lat": 37.5665, "lng": 126.9780, "name": "South Korea", "flag": "🇰🇷"},
+    "china":     {"lat": 31.2304, "lng": 121.4737, "name": "China",       "flag": "🇨🇳"},
+    "vinted":    {"lat": 52.3676, "lng":   4.9041, "name": "Vinted",      "flag": "🛍"},
+    "vestiaire": {"lat": 48.8566, "lng":   2.3522, "name": "Vestiaire",   "flag": "✦"},
 }
 
 # NL VAT: 21% on all items, no import duty threshold
@@ -198,6 +203,31 @@ async def api_listings(
         listings.append(d)
 
     return {"listings": listings, "total": total, "offset": offset, "limit": limit}
+
+
+@app.post("/api/bookmarks/toggle")
+async def api_toggle_bookmark(request: Request):
+    """Toggle bookmark for a listing. Body: {"id": "...", "platform": "..."}"""
+    if not _db:
+        return {"ok": False}
+    body = await request.json()
+    lid = body.get("id", "")
+    platform = body.get("platform", "")
+    if not lid or not platform:
+        return {"ok": False, "error": "id and platform required"}
+    new_state = _db.toggle_bookmark(lid, platform)
+    return {"ok": True, "bookmarked": new_state}
+
+
+@app.get("/api/bookmarks")
+async def api_get_bookmarks():
+    """Return all bookmarked listings grouped by keyword_group."""
+    if not _db:
+        return {"listings": [], "total": 0}
+    listings = _db.get_bookmarks()
+    for d in listings:
+        d["price_eur_nl"] = _nl_landed(d.get("price_eur"))
+    return {"listings": listings, "total": len(listings)}
 
 
 @app.get("/api/stream")
@@ -308,6 +338,35 @@ async def api_scrape_interval(request: Request):
 
 
 # ── Config editing ────────────────────────────────────────────────────────────
+
+@app.post("/api/translate")
+async def api_translate(request: Request):
+    """Translate a list of English terms to JP / KR / CN using the free Google endpoint."""
+    body = await request.json()
+    terms: list[str] = body.get("terms", [])
+    targets: list[str] = body.get("targets", ["ja", "ko", "zh-cn"])
+    if not terms:
+        return {t: [] for t in targets}
+
+    async def _translate_one(text: str, tl: str) -> str:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.get(
+                    "https://translate.googleapis.com/translate_a/single",
+                    params={"client": "gtx", "sl": "en", "tl": tl, "dt": "t", "q": text},
+                )
+                r.raise_for_status()
+                data = r.json()
+                return "".join(part[0] for part in data[0] if part and part[0])
+        except Exception:
+            return text
+
+    result: dict[str, list[str]] = {}
+    for tl in targets:
+        result[tl] = list(await asyncio.gather(*[_translate_one(t, tl) for t in terms]))
+
+    return result
+
 
 @app.get("/api/config")
 async def api_get_config():

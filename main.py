@@ -21,7 +21,7 @@ import logging
 import signal
 import sys
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import uvicorn
@@ -227,18 +227,20 @@ async def main(args) -> None:
     intervals = config.get("intervals_seconds", {})
     scheduler = AsyncIOScheduler(timezone="UTC")
 
-    for name, scraper in scrapers.items():
+    # Stagger initial runs by 8s per scraper — prevents simultaneous browser launches
+    # (multiple Playwright/camoufox instances starting at once causes CancelledError on Windows)
+    for offset_idx, (name, scraper) in enumerate(scrapers.items()):
         interval = intervals.get(name, 60)
         scheduler.add_job(
             _scan_job,
             trigger=IntervalTrigger(seconds=interval),
             args=[name, scraper, notifications, stats_store],
             id=f"scan_{name}",
-            next_run_time=datetime.utcnow(),   # run immediately on start
+            next_run_time=datetime.utcnow() + timedelta(seconds=offset_idx * 8),
             max_instances=1,
             coalesce=True,
         )
-        logger.info(f"[{name}] Scheduled every {interval}s")
+        logger.info(f"[{name}] Scheduled every {interval}s (first run in {offset_idx * 8}s)")
 
     scheduler.start()
 

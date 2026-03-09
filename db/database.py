@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS listings (
     condition        TEXT,                      -- as listed on platform
     keyword_group    TEXT,                      -- matched keyword group name
     is_suspicious    INTEGER NOT NULL DEFAULT 0,-- 1 = suspiciously cheap
+    bookmarked       INTEGER NOT NULL DEFAULT 0,-- 1 = bookmarked by user
     first_seen       TEXT    NOT NULL,          -- ISO-8601 timestamp
     last_seen        TEXT    NOT NULL,          -- ISO-8601 timestamp
     PRIMARY KEY (id, platform)
@@ -118,6 +119,13 @@ class Database:
         """Create all tables and indices if they don't exist."""
         with self._conn() as conn:
             conn.executescript(_DDL)
+            # Migration: add bookmarked column to existing DBs
+            try:
+                conn.execute(
+                    "ALTER TABLE listings ADD COLUMN bookmarked INTEGER NOT NULL DEFAULT 0"
+                )
+            except Exception:
+                pass  # Column already exists
 
     # ── Listings ──────────────────────────────────────────────────────────
 
@@ -178,6 +186,32 @@ class Database:
                 "UPDATE listings SET last_seen = ? WHERE id = ? AND platform = ?",
                 (datetime.utcnow().isoformat(), listing_id, platform),
             )
+
+    # ── Bookmarks ──────────────────────────────────────────────────────────
+
+    def toggle_bookmark(self, listing_id: str, platform: str) -> bool:
+        """Toggle bookmark state. Returns the new bookmarked state (True = bookmarked)."""
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT bookmarked FROM listings WHERE id = ? AND platform = ?",
+                (listing_id, platform),
+            ).fetchone()
+            if row is None:
+                return False
+            new_state = 0 if row["bookmarked"] else 1
+            conn.execute(
+                "UPDATE listings SET bookmarked = ? WHERE id = ? AND platform = ?",
+                (new_state, listing_id, platform),
+            )
+            return bool(new_state)
+
+    def get_bookmarks(self) -> list[dict]:
+        """Return all bookmarked listings, newest first."""
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM listings WHERE bookmarked = 1 ORDER BY first_seen DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_recent_listings(self, platform: str, limit: int = 50) -> list[dict]:
         """Return the most recent listings for a platform."""

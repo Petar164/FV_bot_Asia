@@ -443,6 +443,57 @@
       cursor: pointer; transition: all .15s; user-select: none;
     }
     .kw-plat-cb:checked + .kw-plat-lbl { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Bookmark button in listing rows ──────────────────────── */
+    .bm-btn {
+      background: transparent; border: none; cursor: pointer;
+      font-size: 14px; padding: 0 2px; line-height: 1;
+      color: var(--mute); transition: color .15s; flex-shrink: 0;
+    }
+    .bm-btn:hover { color: var(--accent); }
+    .bm-btn.saved { color: #e8c84a; }
+
+    /* ── Sidebar saved-items button ───────────────────────────── */
+    .bm-open-btn {
+      width: 100%; display: flex; align-items: center; gap: 7px;
+      padding: 8px 0; background: transparent; border: none; border-bottom: 1px solid var(--border);
+      color: var(--dim); cursor: pointer; font-size: 11px; font-family: inherit;
+      transition: color .15s; text-align: left;
+    }
+    .bm-open-btn:last-child { border-bottom: none; }
+    .bm-open-btn:hover { color: var(--accent); }
+    .bm-open-cnt { margin-left: auto; font-size: 10px; color: var(--mute); font-variant-numeric: tabular-nums; }
+
+    /* ── Bookmarks overlay panel ──────────────────────────────── */
+    #bm-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.72);
+      z-index: 500; display: none; align-items: stretch; justify-content: flex-end;
+    }
+    #bm-overlay.open { display: flex; }
+    #bm-panel {
+      background: var(--surface); border-left: 1px solid var(--border);
+      width: var(--rs); display: flex; flex-direction: column; overflow: hidden;
+    }
+    #bm-hd {
+      padding: 16px 18px 12px; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+    }
+    #bm-title { font-size: 9px; letter-spacing: 3px; text-transform: uppercase; color: var(--dim); }
+    #bm-total { font-size: 20px; font-weight: 300; color: var(--accent); margin-top: 3px; }
+    #bm-x {
+      width: 30px; height: 30px; border: 1px solid var(--border2); border-radius: 2px;
+      background: transparent; color: var(--dim); cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center; transition: all .15s; flex-shrink: 0;
+    }
+    #bm-x:hover { border-color: var(--accent); color: var(--accent); }
+    #bm-list { flex: 1; overflow-y: auto; }
+    #bm-list::-webkit-scrollbar { width: 3px; }
+    #bm-list::-webkit-scrollbar-thumb { background: #1e1e1e; }
+    .bm-group-hd {
+      padding: 9px 18px 7px; font-size: 7px; letter-spacing: 3px; text-transform: uppercase;
+      color: var(--mute); border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; background: var(--surface); z-index: 1;
+    }
   </style>
 </head>
 <body>
@@ -570,6 +621,8 @@
   <aside id="ls">
     <div class="sec">
       <div class="sec-lbl">Platforms</div>
+      <div class="pr"><div class="pr-l"><span class="pr-flag">🇪🇺</span><span class="pr-name">Vinted</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-vinted">0</span><div class="sdot" id="dot-vinted"></div></div></div>
+      <div class="pr"><div class="pr-l"><span class="pr-flag">🇪🇺</span><span class="pr-name">Vestiaire</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-vestiaire">0</span><div class="sdot" id="dot-vestiaire"></div></div></div>
       <div class="pr"><div class="pr-l"><span class="pr-flag">🇯🇵</span><span class="pr-name">Mercari JP</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-mercari_jp">0</span><div class="sdot" id="dot-mercari_jp"></div></div></div>
       <div class="pr"><div class="pr-l"><span class="pr-flag">🇯🇵</span><span class="pr-name">Yahoo Auctions</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-yahoo_auctions">0</span><div class="sdot" id="dot-yahoo_auctions"></div></div></div>
       <div class="pr"><div class="pr-l"><span class="pr-flag">🇯🇵</span><span class="pr-name">Rakuma</span></div><div class="pr-r"><span class="pr-cnt" id="cnt-rakuma">0</span><div class="sdot" id="dot-rakuma"></div></div></div>
@@ -585,6 +638,12 @@
     <div class="sec">
       <div class="sec-lbl">Keywords</div>
       <div id="kw-list"></div>
+    </div>
+    <div class="sec">
+      <button class="bm-open-btn" onclick="openBookmarks()">
+        &#x2665; Saved Items
+        <span class="bm-open-cnt" id="bm-cnt"></span>
+      </button>
     </div>
   </aside>
 
@@ -644,6 +703,17 @@
       <button class="kw-save-btn" id="kw-save-btn" onclick="saveKw()">Save changes</button>
       <span class="kw-msg" id="kw-msg">Saved</span>
     </div>
+  </div>
+</div>
+
+<!-- Bookmarks panel -->
+<div id="bm-overlay" onclick="bmOverlayClick(event)">
+  <div id="bm-panel">
+    <div id="bm-hd">
+      <div><div id="bm-title">Saved Items</div><div id="bm-total">0 saved items</div></div>
+      <button id="bm-x" onclick="closeBookmarks()">&#x2715;</button>
+    </div>
+    <div id="bm-list"><div class="rs-empty">Loading…</div></div>
   </div>
 </div>
 
@@ -1108,6 +1178,7 @@ async function fetchListings(append=false) {
 }
 function rowHTML(l) {
   const s=l.is_suspicious===1||l.is_suspicious===true;
+  const bm=l.bookmarked===1||l.bookmarked===true;
   const eur=l.price_eur!=null?`€${Math.round(l.price_eur).toLocaleString()}`:'—';
   const vat=l.price_eur_nl!=null?`€${Math.round(l.price_eur_nl).toLocaleString()}`:'—';
   const op=l.price&&l.currency?`${Math.round(l.price).toLocaleString()} ${l.currency}`:'';
@@ -1117,18 +1188,22 @@ function rowHTML(l) {
   const img=l.image_url
     ?`<img class="lr-img" src="${x(l.image_url)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="lr-ph" style="display:none">—</div>`
     :`<div class="lr-ph">—</div>`;
+  const eid=x(l.id); const epl=x(l.platform);
   return `<a class="lr${s?' sf':''}" href="${x(l.url)}" target="_blank" rel="noopener">
     ${img}
     <div class="lr-b">
       <div class="lr-top"><div class="lr-title">${x(ti)}</div><div class="lr-plat">${x(pl)}</div></div>
       ${ot?`<div class="lr-orig">${x(ot)}</div>`:''}
-      ${s?`<span class="lr-stag">⚠ Suspicious</span>`:''}
+      ${s?`<span class="lr-stag">!! Suspicious</span>`:''}
       <div class="lr-bot">
         <div class="lr-prices">
           <div class="lr-eur">${eur}${op?`<span class="lr-op">${x(op)}</span>`:''}</div>
           <div class="lr-vat"><span class="lr-vl">+21% VAT</span>${vat}</div>
         </div>
-        <div class="lr-lnk">View →</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="bm-btn${bm?' saved':''}" data-id="${eid}" data-pl="${epl}" onclick="event.preventDefault();event.stopPropagation();toggleBM(this,'${eid.replace(/'/g,'\\x27')}','${epl.replace(/'/g,'\\x27')}')" title="${bm?'Remove bookmark':'Save listing'}">${bm?'&#x2665;':'&#x2661;'}</button>
+          <div class="lr-lnk">View &#x2192;</div>
+        </div>
       </div>
     </div>
   </a>`;
@@ -1150,6 +1225,84 @@ function setSort(mode,btn) {
 }
 function toggleVat(on) { showVat=on; applyVat(); }
 function applyVat() { document.querySelectorAll('.lr-vat').forEach(e=>e.classList.toggle('show',showVat)); }
+
+// ── Bookmarks ─────────────────────────────────────────────────────────────────
+let _bmCount = 0;
+
+async function toggleBM(btn, id, platform) {
+  try {
+    const {ok, bookmarked} = await fetch('/api/bookmarks/toggle', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id, platform}),
+    }).then(r => r.json());
+    if (!ok) return;
+    // Update all matching bookmark buttons (listing may appear in multiple panels)
+    document.querySelectorAll(`.bm-btn[data-id="${id}"][data-pl="${platform}"]`).forEach(b => {
+      b.classList.toggle('saved', bookmarked);
+      b.innerHTML = bookmarked ? '&#x2665;' : '&#x2661;';
+      b.title = bookmarked ? 'Remove bookmark' : 'Save listing';
+    });
+    _bmCount = Math.max(0, _bmCount + (bookmarked ? 1 : -1));
+    const cntEl = document.getElementById('bm-cnt');
+    if (cntEl) cntEl.textContent = _bmCount > 0 ? String(_bmCount) : '';
+    // If bookmark panel is open and we un-bookmarked, refresh the panel
+    if (!bookmarked && document.getElementById('bm-overlay').classList.contains('open')) {
+      await renderBookmarks();
+    }
+  } catch(e) {}
+}
+
+async function openBookmarks() {
+  document.getElementById('bm-overlay').classList.add('open');
+  await renderBookmarks();
+}
+
+function closeBookmarks() {
+  document.getElementById('bm-overlay').classList.remove('open');
+}
+
+function bmOverlayClick(e) {
+  if (e.target === document.getElementById('bm-overlay')) closeBookmarks();
+}
+
+async function renderBookmarks() {
+  const list = document.getElementById('bm-list');
+  list.innerHTML = '<div class="rs-empty">Loading…</div>';
+  try {
+    const {listings=[]} = await fetch('/api/bookmarks').then(r => r.json());
+    _bmCount = listings.length;
+    const cntEl = document.getElementById('bm-cnt');
+    if (cntEl) cntEl.textContent = _bmCount > 0 ? String(_bmCount) : '';
+    set('bm-total', `${_bmCount} saved item${_bmCount !== 1 ? 's' : ''}`);
+    if (!listings.length) {
+      list.innerHTML = '<div class="rs-empty">No saved items yet</div>';
+      return;
+    }
+    // Group by keyword_group
+    const groups = {};
+    for (const l of listings) {
+      const g = l.keyword_group || 'Uncategorised';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push(l);
+    }
+    list.innerHTML = Object.entries(groups).map(([grp, items]) =>
+      `<div class="bm-group-hd">${x(grp)}</div>` + items.map(rowHTML).join('')
+    ).join('');
+    applyVat();
+  } catch(e) {
+    list.innerHTML = '<div class="rs-empty">Error loading saved items</div>';
+  }
+}
+
+async function initBookmarks() {
+  try {
+    const {total=0} = await fetch('/api/bookmarks').then(r => r.json());
+    _bmCount = total;
+    const cntEl = document.getElementById('bm-cnt');
+    if (cntEl) cntEl.textContent = _bmCount > 0 ? String(_bmCount) : '';
+  } catch(e) {}
+}
 
 // ── Scraping control ─────────────────────────────────────────────────────────
 let _scPaused = false;
@@ -1290,21 +1443,24 @@ function renderKwModal() {
         <button class="kw-del-btn" onclick="delKwGroup(${gi})">Remove</button>
       </div>
       <div class="kw-field">
-        <span class="kw-label">English terms (one per line · used by all platforms)</span>
-        <textarea class="kw-ta" oninput="kwLangChange(${gi},'terms_en',this.value)">${(grp.terms_en||[]).join('\n')}</textarea>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+          <span class="kw-label">English terms (one per line · used by all platforms)</span>
+          <button class="kw-del-btn" style="font-size:7px;padding:3px 8px;border-color:rgba(122,225,255,.25);color:var(--accent)" onclick="autoTranslate(${gi})">🌐 Auto-translate</button>
+        </div>
+        <textarea id="ta-en-${gi}" class="kw-ta" oninput="kwLangChange(${gi},'terms_en',this.value)">${(grp.terms_en||[]).join('\n')}</textarea>
       </div>
       <div class="kw-row">
         <div class="kw-field">
           <span class="kw-label">Japanese 🇯🇵</span>
-          <textarea class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_jp',this.value)">${(grp.terms_jp||[]).join('\n')}</textarea>
+          <textarea id="ta-jp-${gi}" class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_jp',this.value)">${(grp.terms_jp||[]).join('\n')}</textarea>
         </div>
         <div class="kw-field">
           <span class="kw-label">Korean 🇰🇷</span>
-          <textarea class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_kr',this.value)">${(grp.terms_kr||[]).join('\n')}</textarea>
+          <textarea id="ta-kr-${gi}" class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_kr',this.value)">${(grp.terms_kr||[]).join('\n')}</textarea>
         </div>
         <div class="kw-field">
           <span class="kw-label">Chinese 🇨🇳</span>
-          <textarea class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_cn',this.value)">${(grp.terms_cn||[]).join('\n')}</textarea>
+          <textarea id="ta-cn-${gi}" class="kw-ta" style="height:64px" oninput="kwLangChange(${gi},'terms_cn',this.value)">${(grp.terms_cn||[]).join('\n')}</textarea>
         </div>
       </div>
       <div class="kw-row">
@@ -1336,6 +1492,34 @@ function renderKwModal() {
   addBtn.textContent = '+ Add keyword group';
   addBtn.onclick = addKwGroup;
   body.appendChild(addBtn);
+}
+
+async function autoTranslate(gi) {
+  const enTerms = (_kwData[gi].terms_en || []).filter(Boolean);
+  if (!enTerms.length) return;
+  const btn = event.currentTarget;
+  const orig = btn.textContent;
+  btn.textContent = '⏳ Translating…'; btn.disabled = true;
+  try {
+    const res = await fetch('/api/translate', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({terms: enTerms, targets: ['ja','ko','zh-cn']}),
+    }).then(r=>r.json());
+    const set = (id, field, arr) => {
+      _kwData[gi][field] = arr;
+      const el = document.getElementById(id);
+      if (el) el.value = arr.join('\n');
+    };
+    if (res['ja'])    set(`ta-jp-${gi}`, 'terms_jp', res['ja']);
+    if (res['ko'])    set(`ta-kr-${gi}`, 'terms_kr', res['ko']);
+    if (res['zh-cn']) set(`ta-cn-${gi}`, 'terms_cn', res['zh-cn']);
+    btn.textContent = '✓ Done';
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+  } catch(e) {
+    btn.textContent = '✗ Failed'; btn.disabled = false;
+    setTimeout(() => { btn.textContent = orig; }, 2000);
+  }
 }
 
 function kwLangChange(gi, field, val) {
@@ -1454,6 +1638,7 @@ function x(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 // ── Boot ─────────────────────────────────────────────────────────────────────
 initGlobe().then(refreshGlobe);
 initScrapingStatus();
+initBookmarks();
 setInterval(refreshGlobe, 15000);
 </script>
 </body>

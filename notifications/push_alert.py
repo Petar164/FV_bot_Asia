@@ -97,7 +97,7 @@ class PushAlert:
         platform = listing.get("platform", "").replace("_", " ").upper()
         price_eur = listing.get("price_eur")
         price_str = f"EUR {price_eur:,.0f}" if price_eur else ""
-        suspicious = "⚠ " if listing.get("is_suspicious") else ""
+        suspicious = "!! " if listing.get("is_suspicious") else ""
         return f"{suspicious}[{platform}] {price_str}"
 
     @staticmethod
@@ -111,7 +111,7 @@ class PushAlert:
 
         lines = [title, f"{price_eur_str} · {price_orig}", f"Condition: {condition}"]
         if listing.get("is_suspicious"):
-            lines.insert(0, "⚠ SUSPICIOUS PRICE — verify authenticity!")
+            lines.insert(0, "!! SUSPICIOUS PRICE — verify authenticity!")
         return "\n".join(lines)
 
     @staticmethod
