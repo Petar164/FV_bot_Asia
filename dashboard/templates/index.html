@@ -236,10 +236,9 @@
     .globe-pin {
       background: rgba(10,14,18,.90);
       border: 1px solid rgba(122,225,255,.18);
-      padding: 4px 6px 3px;
+      padding: 3px 5px 2px;
       cursor: pointer;
       font-family: 'Courier New', Courier, monospace;
-      min-width: 62px;
       user-select: none;
       /* scale driven by JS via --pin-scale CSS var (zoom-responsive) */
       transform: scale(var(--pin-scale, 1));
@@ -251,7 +250,7 @@
     }
     .globe-pin::before {
       content: '';
-      position: absolute; bottom: -5px; left: 10px;
+      position: absolute; bottom: -5px; left: 8px;
       width: 1px; height: 5px;
       background: rgba(122,225,255,.3);
     }
@@ -265,35 +264,32 @@
     .globe-pin.eu-pin { border-color: rgba(255,210,100,.22); }
     .globe-pin.eu-pin:hover { border-color: rgba(255,210,100,.55); }
     .pin-region-label {
-      font-size: 5px; letter-spacing: 2px; text-transform: uppercase;
-      color: rgba(255,210,100,.45); margin-bottom: 2px;
+      font-size: 4px; letter-spacing: 1.5px; text-transform: uppercase;
+      color: rgba(255,210,100,.45); margin-bottom: 1px;
     }
-    .pin-flag { font-size: 9px; line-height: 1; margin-bottom: 2px; }
+    .pin-flag { font-size: 7px; line-height: 1; margin-bottom: 1px; }
     .pin-country {
-      font-size: 6px; font-weight: 700;
-      letter-spacing: 1.5px; text-transform: uppercase;
-      color: #c0d8e8; margin-bottom: 2px;
+      font-size: 5px; font-weight: 700;
+      letter-spacing: 1.2px; text-transform: uppercase;
+      color: #c0d8e8; margin-bottom: 1px;
     }
     .pin-total {
-      font-size: 13px; font-weight: 300; letter-spacing: -0.5px;
+      font-size: 10px; font-weight: 300; letter-spacing: -0.5px;
       color: #7AE1FF; line-height: 1; margin-bottom: 1px;
     }
     .pin-label {
-      font-size: 5px; letter-spacing: 1px; text-transform: uppercase;
-      color: #2e4050; margin-bottom: 3px;
+      font-size: 4px; letter-spacing: 0.8px; text-transform: uppercase;
+      color: #2e4050; margin-bottom: 2px;
     }
     .pin-susp {
-      font-size: 6px; letter-spacing: 1px; text-transform: uppercase;
-      color: #ff8800; margin-bottom: 2px;
+      font-size: 5px; letter-spacing: 0.8px; text-transform: uppercase;
+      color: #ff8800; margin-bottom: 1px;
     }
-    .pin-plats {
-      font-size: 5px; letter-spacing: 0.6px; text-transform: uppercase;
-      color: #1e3040; line-height: 1.4;
-    }
+    .pin-plats { display: none; }
     .pin-time {
-      font-size: 8px; letter-spacing: 0.4px;
+      font-size: 6px; letter-spacing: 0.3px;
       color: rgba(122,225,255,.55); font-family: 'Courier New', Courier, monospace;
-      font-variant-numeric: tabular-nums; margin-bottom: 2px; line-height: 1;
+      font-variant-numeric: tabular-nums; margin-bottom: 1px; line-height: 1;
     }
 
     /* ── Right sidebar ──────────────────────────────────────── */
@@ -838,12 +834,12 @@ let _globeMats = []; // stored so settings can recolor them
 
 const DEFAULT_COUNTRIES = [
   // ── EU platforms ─────────────────────────────────────────────────────────
-  {country:'vinted',     name:'Vinted',     flag:'🛍', lon:4.9041,  lat:52.3676, total:0, suspicious:0, platforms:['vinted'],     region:'EU', platformLabel:'EU — Vinted',               cardOffset:[-72, -10]},
-  {country:'vestiaire',  name:'Vestiaire',  flag:'✦',  lon:12.4964, lat:41.9028, total:0, suspicious:0, platforms:['vestiaire'],  region:'EU', platformLabel:'EU — Vestiaire Collective',   cardOffset:[14, 10]},
+  {country:'vinted',     name:'Vinted',     flag:'🛍', lon:4.9041,  lat:52.3676, total:0, suspicious:0, platforms:['vinted'],     region:'EU', platformLabel:'EU — Vinted'},
+  {country:'vestiaire',  name:'Vestiaire',  flag:'✦',  lon:12.4964, lat:41.9028, total:0, suspicious:0, platforms:['vestiaire'],  region:'EU', platformLabel:'EU — Vestiaire Collective'},
   // ── Asia platforms ────────────────────────────────────────────────────────
-  {country:'japan', name:'Japan',       flag:'🇯🇵', lon:139.6917, lat:35.6895, total:0, suspicious:0, platforms:['mercari_jp','yahoo_auctions','rakuma'], timezone:'Asia/Tokyo',    tzLabel:'JST', cardOffset:[50, 15]},
-  {country:'korea', name:'South Korea', flag:'🇰🇷', lon:126.9780, lat:37.5665, total:0, suspicious:0, platforms:['bunjang'],                               timezone:'Asia/Seoul',    tzLabel:'KST', cardOffset:[-20, -70]},
-  {country:'china', name:'China',       flag:'🇨🇳', lon:116.4074, lat:39.9042, total:0, suspicious:0, platforms:['xianyu'],                                timezone:'Asia/Shanghai', tzLabel:'CST', cardOffset:[-85, 25]},
+  {country:'japan', name:'Japan',       flag:'🇯🇵', lon:139.6917, lat:35.6895, total:0, suspicious:0, platforms:['mercari_jp','yahoo_auctions','rakuma'], timezone:'Asia/Tokyo',    tzLabel:'JST'},
+  {country:'korea', name:'South Korea', flag:'🇰🇷', lon:126.9780, lat:37.5665, total:0, suspicious:0, platforms:['bunjang'],                               timezone:'Asia/Seoul',    tzLabel:'KST'},
+  {country:'china', name:'China',       flag:'🇨🇳', lon:116.4074, lat:39.9042, total:0, suspicious:0, platforms:['xianyu'],                                timezone:'Asia/Shanghai', tzLabel:'CST'},
 ];
 globeData = [...DEFAULT_COUNTRIES];
 
