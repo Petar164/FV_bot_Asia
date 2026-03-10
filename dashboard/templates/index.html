@@ -169,35 +169,57 @@
       grid-area: ls;
       background: var(--surface); border-right: 1px solid var(--border);
       overflow-y: auto; padding: 20px 0;
-      display: flex; flex-direction: column; gap: 26px;
+      display: flex; flex-direction: column; gap: 0;
     }
     #ls::-webkit-scrollbar { width:3px; }
     #ls::-webkit-scrollbar-thumb { background:#1e1e1e; }
 
-    .sec { padding: 0 16px; }
-    .sec-lbl { font-size:8px; letter-spacing:3px; text-transform:uppercase; color:var(--mute); margin-bottom:10px; }
+    .sec { padding: 18px 16px 16px; border-bottom: 1px solid var(--border); }
+    .sec:last-of-type { border-bottom: none; }
+    .sec-lbl {
+      font-size: 7px; letter-spacing: 3.5px; text-transform: uppercase;
+      color: #484848; margin-bottom: 12px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .sec-lbl::before {
+      content: ''; display: block; width: 12px; height: 1px;
+      background: rgba(122,225,255,.2); flex-shrink: 0;
+    }
 
-    .pr { display:flex; align-items:center; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--border); }
+    .pr {
+      display:flex; align-items:center; justify-content:space-between;
+      padding: 6px 0; border-bottom:1px solid var(--border);
+      transition: padding-left .15s;
+    }
     .pr:last-child { border-bottom:none; }
+    .pr:hover { padding-left: 3px; }
     .pr-l { display:flex; align-items:center; gap:7px; }
-    .pr-flag { font-size:13px; }
-    .pr-name { font-size:11px; color:var(--dim); }
-    .pr-r { display:flex; align-items:center; gap:7px; }
-    .pr-cnt { font-size:10px; color:var(--mute); font-variant-numeric:tabular-nums; }
-    .sdot { width:5px; height:5px; border-radius:50%; background:var(--mute); transition:background .3s; }
-    .sdot.ok { background:var(--green); }
-    .sdot.err { background:var(--red); }
+    .pr-flag { font-size:11px; opacity:.75; }
+    .pr-name { font-size:11px; color:var(--dim); transition: color .12s; }
+    .pr:hover .pr-name { color: var(--text); }
+    .pr-r { display:flex; align-items:center; gap:8px; }
+    .pr-cnt {
+      font-size:10px; color:#363636; font-variant-numeric:tabular-nums;
+      transition: color .3s; min-width: 22px; text-align: right;
+    }
+    .pr-cnt.live { color: #888; }
+    .sdot {
+      width:5px; height:5px; border-radius:50%; background:#252525;
+      transition: background .3s, box-shadow .4s; flex-shrink: 0;
+    }
+    .sdot.ok  { background: var(--green); box-shadow: 0 0 6px rgba(0,232,122,.3); }
+    .sdot.err { background: var(--red);   box-shadow: 0 0 6px rgba(255,53,53,.3); }
 
-    .sr { display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid var(--border); }
+    .sr { display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid var(--border); }
     .sr:last-child { border-bottom:none; }
-    .sr-k { font-size:10px; color:var(--dim); }
-    .sr-v { font-size:13px; color:var(--accent); font-variant-numeric:tabular-nums; }
+    .sr-k { font-size:9px; color:#3e3e3e; letter-spacing:.3px; }
+    .sr-v { font-size:14px; font-weight:300; color:var(--accent); font-variant-numeric:tabular-nums; }
     .sr-v.w { color:var(--red); }
 
-    .kr { padding:7px 0; border-bottom:1px solid var(--border); }
+    .kr { padding:6px 0; border-bottom:1px solid var(--border); }
     .kr:last-child { border-bottom:none; }
     .kr-name { font-size:11px; color:var(--text); margin-bottom:3px; }
-    .kr-meta { font-size:9px; color:var(--mute); }
+    .kr-meta { font-size:9px; color:#3a3a3a; }
 
     /* ── Globe ──────────────────────────────────────────────── */
     #globe-wrap {
@@ -1241,7 +1263,7 @@ sse.onmessage=e=>{
   set('st-total',(db.total_listings??'—').toLocaleString());
   set('st-susp',(db.suspicious??'—').toLocaleString());
   set('st-alerts',(db.alerts_sent??'—').toLocaleString());
-  Object.entries(db.by_platform||{}).forEach(([p,n])=>{ const el=document.getElementById('cnt-'+p); if(el) el.textContent=n.toLocaleString(); });
+  Object.entries(db.by_platform||{}).forEach(([p,n])=>{ const el=document.getElementById('cnt-'+p); if(el){ el.textContent=n.toLocaleString(); el.classList.toggle('live', n>0); } });
   Object.entries(platforms).forEach(([p,s])=>{ const d=document.getElementById('dot-'+p); if(d) d.className='sdot'+(s.status==='OK'?' ok':s.status==='ERR'?' err':''); });
   checkNewListings(db.by_platform||{});
   refreshGlobe();
