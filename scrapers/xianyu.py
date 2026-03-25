@@ -58,11 +58,13 @@ class XianyuScraper(BaseScraper):
                     "--disable-dev-shm-usage",
                 ],
             )
+            _sp = self._session_path()
             context = await browser.new_context(
                 user_agent=self._random_ua(),
                 locale="zh-CN",
                 viewport={"width": 1366, "height": 768},
                 extra_http_headers={"Accept-Language": "zh-CN,zh;q=0.9"},
+                storage_state=str(_sp) if _sp.exists() else None,
             )
 
             # ── Intercept API calls ───────────────────────────────────
@@ -119,6 +121,10 @@ class XianyuScraper(BaseScraper):
             except Exception as exc:
                 logger.error(f"[{self.PLATFORM}] Error: {exc}", exc_info=True)
             finally:
+                try:
+                    await context.storage_state(path=str(_sp))
+                except Exception:
+                    pass
                 await browser.close()
 
         logger.debug(f"[{self.PLATFORM}] '{keyword}' → {len(results)} raw results")

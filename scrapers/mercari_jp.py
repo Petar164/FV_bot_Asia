@@ -61,10 +61,12 @@ class MercariJPScraper(BaseScraper):
                 args=["--no-sandbox", "--disable-dev-shm-usage",
                       "--disable-blink-features=AutomationControlled"],
             )
+            _sp = self._session_path()
             context = await browser.new_context(
                 user_agent=self._random_ua(),
                 locale="ja-JP",
                 viewport={"width": 1280, "height": 900},
+                storage_state=str(_sp) if _sp.exists() else None,
             )
             page = await context.new_page()
             await page.add_init_script(
@@ -94,6 +96,10 @@ class MercariJPScraper(BaseScraper):
             except Exception as exc:
                 logger.error(f"[{self.PLATFORM}] Error for '{keyword}': {exc}", exc_info=True)
             finally:
+                try:
+                    await context.storage_state(path=str(_sp))
+                except Exception:
+                    pass
                 await browser.close()
 
         if not captured:

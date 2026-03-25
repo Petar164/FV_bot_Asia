@@ -86,6 +86,7 @@ class VestiaireScraper(BaseScraper):
     # ── camoufox path ─────────────────────────────────────────────────────
 
     async def _search_camoufox(self, url: str, keyword: str, AsyncCamoufox) -> list[dict]:
+        _sp = self._session_path()
         try:
             async with AsyncCamoufox(headless=True) as browser:
                 page = await browser.new_page()
@@ -104,7 +105,14 @@ class VestiaireScraper(BaseScraper):
                 except PlaywrightTimeout:
                     logger.warning(f"[{self.PLATFORM}] No .shtml cards appeared for '{keyword}'")
 
-                return await self._extract_items(page)
+                items = await self._extract_items(page)
+
+                try:
+                    await page.context.storage_state(path=str(_sp))
+                except Exception:
+                    pass
+
+                return items
 
         except Exception as exc:
             logger.error(f"[{self.PLATFORM}] camoufox error: {exc}", exc_info=True)
@@ -113,6 +121,7 @@ class VestiaireScraper(BaseScraper):
     # ── Plain Playwright fallback ─────────────────────────────────────────
 
     async def _search_playwright(self, url: str, keyword: str) -> list[dict]:
+        _sp = self._session_path()
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
                 headless=True,
@@ -122,6 +131,7 @@ class VestiaireScraper(BaseScraper):
                 user_agent=self._random_ua(),
                 locale="en-GB",
                 viewport={"width": 1366, "height": 768},
+                storage_state=str(_sp) if _sp.exists() else None,
             )
             page = await context.new_page()
 
@@ -136,6 +146,10 @@ class VestiaireScraper(BaseScraper):
                 pass
 
             items = await self._extract_items(page)
+            try:
+                await context.storage_state(path=str(_sp))
+            except Exception:
+                pass
             await browser.close()
             return items
 

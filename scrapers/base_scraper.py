@@ -26,6 +26,7 @@ The returned listing dict shape (all fields required unless marked optional):
 
 import logging
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -91,6 +92,14 @@ class BaseScraper(ABC):
         self._platform_cfg = config.get("intervals_seconds", {})
 
         logger.info(f"[{self.PLATFORM}] Scraper initialised")
+
+    # ── Session persistence ───────────────────────────────────────────────
+
+    def _session_path(self) -> Path:
+        """Return path to this platform's Playwright browser session file."""
+        p = Path("sessions") / self.PLATFORM / "state.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
 
     # ── Abstract interface ────────────────────────────────────────────────
 
