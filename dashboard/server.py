@@ -110,6 +110,19 @@ _COUNTRY_META = {
     "vestiaire": {"lat": 48.8566, "lng":   2.3522, "name": "Vestiaire",   "flag": "✦"},
 }
 
+# ── Condition → deal score points ─────────────────────────────────────────────
+_CONDITION_SCORES: dict = {
+    "new with tags":  25,
+    "new_with_tags":  25,
+    "brandnew":       25,
+    "like new":       20,
+    "like_new":       20,
+    "very good":      18,
+    "good":           15,
+    "fair":            8,
+    "poor":            3,
+}
+
 # ── Shipping costs per platform (EUR, NL destination) ─────────────────────────
 _SHIPPING_COSTS: dict = {
     "mercari_jp":     20.0,   # Japan → NL tracked parcel
@@ -150,6 +163,62 @@ def _cost_breakdown(listing: dict) -> dict:
         "total_landed":  total,
         "price_eur_nl":  round(price_eur + vat, 2),   # legacy
     }
+
+
+def _fetch_group_avgs() -> dict:
+    """Return {(group_name, platform): avg_eur} from keywords rolling averages."""
+    if not _db:
+        return {}
+    with _db._conn() as conn:
+        rows = conn.execute(
+            "SELECT group_name, platform, AVG(rolling_avg_eur) AS avg "
+            "FROM keywords WHERE rolling_avg_eur IS NOT NULL "
+            "GROUP BY group_name, platform"
+        ).fetchall()
+    return {(r["group_name"], r["platform"]): r["avg"] for r in rows}
+
+
+def _deal_score(listing: dict, group_avgs: dict) -> int:
+    """
+    Composite deal score 0-100.
+
+    Component            Max pts
+    ─────────────────────────────
+    Price vs rolling avg   60   (1 - price/avg) × 60
+    Condition              25   graded by condition string
+    Vision score           15   vision_score/100 × 15
+    Suspicious bonus       +10  capped at 100
+    """
+    price_eur = listing.get("price_eur")
+    if price_eur is None:
+        return 0
+
+    # Price vs rolling avg (0-60 pts)
+    group    = listing.get("keyword_group", "")
+    platform = listing.get("platform", "")
+    avg      = group_avgs.get((group, platform))
+    if avg and avg > 0 and price_eur < avg:
+        price_pts = min(60, max(0, int((1 - price_eur / avg) * 60)))
+    else:
+        price_pts = 0
+
+    # Condition (0-25 pts) — default 10 if unknown/missing
+    condition = (listing.get("condition") or "").lower().strip()
+    cond_pts = 10
+    for key, pts in _CONDITION_SCORES.items():
+        if key in condition:
+            cond_pts = pts
+            break
+
+    # Vision score (0-15 pts)
+    vision = listing.get("vision_score")
+    vision_pts = int((vision / 100) * 15) if vision is not None else 0
+
+    score = price_pts + cond_pts + vision_pts
+    if listing.get("is_suspicious"):
+        score += 10
+
+    return min(100, score)
 
 
 @app.get("/api/globe-data")
@@ -218,27 +287,45 @@ async def api_listings(
             where_clauses.append("is_suspicious = 0")
 
         _ORDER_MAP = {
-            "newest":    "first_seen DESC",
-            "oldest":    "first_seen ASC",
-            "price_asc": "price_eur ASC",
-            "price_desc":"price_eur DESC",
+            "newest":     "first_seen DESC",
+            "oldest":     "first_seen ASC",
+            "price_asc":  "price_eur ASC",
+            "price_desc": "price_eur DESC",
         }
-        order_sql = _ORDER_MAP.get(sort, "first_seen DESC")
 
         where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
         total = conn.execute(
             f"SELECT COUNT(*) FROM listings {where_sql}", params
         ).fetchone()[0]
-        rows = conn.execute(
-            f"SELECT * FROM listings {where_sql} ORDER BY {order_sql} LIMIT ? OFFSET ?",
-            params + [limit, offset],
-        ).fetchall()
 
-    listings = []
-    for r in rows:
-        d = dict(r)
-        d.update(_cost_breakdown(d))
-        listings.append(d)
+        if sort == "deal_score":
+            # Fetch all matching rows, score in Python, then paginate
+            all_rows = conn.execute(
+                f"SELECT * FROM listings {where_sql} ORDER BY first_seen DESC",
+                params,
+            ).fetchall()
+            group_avgs = _fetch_group_avgs()
+            all_listings = []
+            for r in all_rows:
+                d = dict(r)
+                d.update(_cost_breakdown(d))
+                d["deal_score"] = _deal_score(d, group_avgs)
+                all_listings.append(d)
+            all_listings.sort(key=lambda x: x["deal_score"], reverse=True)
+            listings = all_listings[offset: offset + limit]
+        else:
+            order_sql = _ORDER_MAP.get(sort, "first_seen DESC")
+            rows = conn.execute(
+                f"SELECT * FROM listings {where_sql} ORDER BY {order_sql} LIMIT ? OFFSET ?",
+                params + [limit, offset],
+            ).fetchall()
+            group_avgs = _fetch_group_avgs()
+            listings = []
+            for r in rows:
+                d = dict(r)
+                d.update(_cost_breakdown(d))
+                d["deal_score"] = _deal_score(d, group_avgs)
+                listings.append(d)
 
     return {"listings": listings, "total": total, "offset": offset, "limit": limit}
 
@@ -263,8 +350,10 @@ async def api_get_bookmarks():
     if not _db:
         return {"listings": [], "total": 0}
     listings = _db.get_bookmarks()
+    group_avgs = _fetch_group_avgs()
     for d in listings:
         d.update(_cost_breakdown(d))
+        d["deal_score"] = _deal_score(d, group_avgs)
     return {"listings": listings, "total": len(listings)}
 
 
