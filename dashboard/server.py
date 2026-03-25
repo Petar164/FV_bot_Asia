@@ -25,6 +25,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import httpx
 import yaml
@@ -44,10 +45,12 @@ _db = None
 _stats_store: dict = {}
 _config: dict = {}
 _scheduler = None
-_config_path: str | None = None
+_config_path: Optional[str] = None
 _current_mode: str = "nonstop"
-_revert_task: asyncio.Task | None = None
-_run_gate = None   # asyncio.Event injected from main.py
+_revert_task: Optional[asyncio.Task] = None
+_run_gate = None          # asyncio.Event injected from main.py
+_keyword_expander = None  # KeywordAIExpander injected from main.py
+_keyword_suggester = None # KeywordSuggester injected from main.py
 
 # ── Interval presets (seconds) ────────────────────────────────────────────────
 INTERVAL_PRESETS = {
@@ -376,7 +379,9 @@ async def api_get_config():
 
 @app.post("/api/config")
 async def api_update_config(request: Request):
-    """Update keyword groups in memory and persist to config.yaml."""
+    """Update keyword groups in memory and persist to config.yaml.
+    If ai_expander.auto_expand_on_save is true, triggers expansion for
+    any group that has empty terms_jp/kr/cn."""
     global _config
     body = await request.json()
     if "keywords" in body:
@@ -384,17 +389,94 @@ async def api_update_config(request: Request):
     if _config_path:
         with open(_config_path, "w", encoding="utf-8") as f:
             yaml.dump(_config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+
+    # Auto-expand groups with missing Asian terms if configured
+    if (
+        _keyword_expander
+        and _config.get("ai_expander", {}).get("auto_expand_on_save", False)
+    ):
+        for group in _config.get("keywords", []):
+            missing = not any([
+                group.get("terms_jp"),
+                group.get("terms_kr"),
+                group.get("terms_cn"),
+            ])
+            if missing and group.get("user_input"):
+                asyncio.ensure_future(
+                    _run_expansion(group["group"], group["user_input"])
+                )
+
     return {"ok": True}
+
+
+async def _run_expansion(group_name: str, user_input: str) -> None:
+    """Background task: expand keywords and write results back to config."""
+    if not _keyword_expander:
+        return
+    try:
+        result = await _keyword_expander.expand(user_input, group_name)
+        if not result:
+            return
+        for group in _config.get("keywords", []):
+            if group.get("group") == group_name:
+                group.update(result)
+                break
+        if _config_path:
+            with open(_config_path, "w", encoding="utf-8") as f:
+                yaml.dump(_config, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        logger.info(f"[config] Auto-expansion complete for '{group_name}'")
+    except Exception as exc:
+        logger.error(f"[config] Auto-expansion failed for '{group_name}': {exc}")
+
+
+@app.post("/api/config/expand/{group_name}")
+async def api_expand_keywords(group_name: str):
+    """Manually trigger full AI keyword expansion for a specific keyword group.
+    Runs the 4-step pipeline (EN expand → DeepL translate → per-market GPT-4o → verify)
+    and writes the result back to config.yaml."""
+    if not _keyword_expander:
+        return {"ok": False, "error": "OpenAI not configured — set openai.api_key in config.yaml"}
+
+    group = next(
+        (g for g in _config.get("keywords", []) if g.get("group") == group_name),
+        None,
+    )
+    if not group:
+        return {"ok": False, "error": f"Group '{group_name}' not found"}
+
+    user_input = group.get("user_input") or group.get("group")
+    asyncio.ensure_future(_run_expansion(group_name, user_input))
+    return {"ok": True, "message": f"Expansion started for '{group_name}'"}
+
+
+@app.get("/api/config/suggest")
+async def api_suggest_keywords(q: str = ""):
+    """Real-time keyword suggestions for the UI keyword editor.
+    Returns up to 6 verified JP/KR/CN terms for the given input string."""
+    if not _keyword_suggester:
+        return {"suggestions": [], "error": "OpenAI not configured"}
+    if len(q.strip()) < 3:
+        return {"suggestions": []}
+    try:
+        suggestions = await _keyword_suggester.suggest(q.strip())
+        return {"suggestions": suggestions}
+    except Exception as exc:
+        logger.error(f"[config] Suggest failed: {exc}")
+        return {"suggestions": [], "error": str(exc)}
 
 
 # ── Init ──────────────────────────────────────────────────────────────────────
 
-def init(db, stats_store: dict, config: dict, scheduler=None, config_path: str = None, run_gate=None):
+def init(db, stats_store: dict, config: dict, scheduler=None, config_path: str = None,
+         run_gate=None, keyword_expander=None, keyword_suggester=None):
     """Called from main.py to inject shared state."""
     global _db, _stats_store, _config, _scheduler, _config_path, _run_gate
+    global _keyword_expander, _keyword_suggester
     _db = db
     _stats_store = stats_store
     _config = config
     _scheduler = scheduler
     _config_path = config_path
     _run_gate = run_gate
+    _keyword_expander = keyword_expander
+    _keyword_suggester = keyword_suggester

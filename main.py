@@ -245,7 +245,9 @@ async def main(args) -> None:
     scheduler.start()
 
     # ── Dashboard ─────────────────────────────────────────────────────
-    dashboard_init(db, stats_store, config, scheduler=scheduler, config_path=args.config, run_gate=run_gate)
+    dashboard_init(db, stats_store, config, scheduler=scheduler, config_path=args.config,
+                   run_gate=run_gate, keyword_expander=keyword_expander,
+                   keyword_suggester=keyword_suggester)
 
     url = f"http://{DASHBOARD_HOST}:{DASHBOARD_PORT}"
     console.print(f"\n[bold white]Dashboard →[/bold white] [dim]{url}[/dim]")
