@@ -269,18 +269,18 @@ class BaseScraper(ABC):
 
     # ── Public run method ─────────────────────────────────────────────────
 
-    async def run(self, notifications: list) -> int:
+    async def run(self, notifications: list, vision_filter=None) -> int:
         """
         Called by the scheduler.  Iterates keyword groups, runs search(),
-        post-processes results, and fires notifications for new listings.
+        post-processes results, optionally scores images via GPT-4o vision,
+        and fires notifications routed by vision score.
         Returns total count of new listings found.
 
-        Supports both the legacy flat platforms list and the new
-        { eu: [...], asia: [...] } schema.
-
-        Respects self._run_gate (asyncio.Event): if the gate is cleared the
-        scan stops cleanly between search terms so the pause button takes
-        effect within seconds rather than waiting for the whole cycle.
+        Vision routing (when vision_filter is set and listing has image_url):
+          score >= min_confidence      → all notification channels
+          score >= priority_threshold  → email only
+          score <  priority_threshold  → no alert (stored in DB only)
+          score is None (no image/API fail) → all channels (no filter)
         """
         total_new = 0
 
@@ -300,8 +300,7 @@ class BaseScraper(ABC):
                     new_listings = await self.process_listings(raw, kw_group)
 
                     for listing in new_listings:
-                        for notifier in notifications:
-                            await notifier.send(listing)
+                        await self._notify(listing, notifications, vision_filter)
 
                     total_new += len(new_listings)
 
@@ -312,6 +311,38 @@ class BaseScraper(ABC):
                     )
 
         return total_new
+
+    async def _notify(self, listing: dict, notifications: list, vision_filter=None) -> None:
+        """
+        Score the listing image via vision filter (if enabled) then route
+        notifications based on the score threshold config.
+        """
+        score = None
+        if vision_filter and vision_filter.enabled:
+            score = await vision_filter.score(listing)
+            if score is not None:
+                listing["vision_score"] = score
+                self.db.update_vision_score(listing["id"], listing["platform"], score)
+
+        # Determine which channels to fire
+        if score is not None:
+            if score < vision_filter.priority_threshold:
+                # Below priority threshold — store only, no alert
+                logger.debug(
+                    f"[{self.PLATFORM}] vision score {score} below threshold "
+                    f"({vision_filter.priority_threshold}) — suppressing alerts for {listing['id']}"
+                )
+                return
+            elif score < vision_filter.min_confidence:
+                # Between thresholds — email only
+                for notifier in notifications:
+                    if notifier.__class__.__name__ == "EmailAlert":
+                        await notifier.send(listing)
+                return
+
+        # Full confidence or no vision filter — fire all channels
+        for notifier in notifications:
+            await notifier.send(listing)
 
     def _platform_selected(self, kw_group: dict) -> bool:
         """

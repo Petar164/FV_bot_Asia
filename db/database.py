@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS listings (
     keyword_group    TEXT,                      -- matched keyword group name
     is_suspicious    INTEGER NOT NULL DEFAULT 0,-- 1 = suspiciously cheap
     bookmarked       INTEGER NOT NULL DEFAULT 0,-- 1 = bookmarked by user
+    vision_score     INTEGER,                   -- GPT-4o image match score 0-100 (NULL = not checked)
     first_seen       TEXT    NOT NULL,          -- ISO-8601 timestamp
     last_seen        TEXT    NOT NULL,          -- ISO-8601 timestamp
     PRIMARY KEY (id, platform)
@@ -126,6 +127,13 @@ class Database:
                 )
             except Exception:
                 pass  # Column already exists
+            # Migration: add vision_score column to existing DBs
+            try:
+                conn.execute(
+                    "ALTER TABLE listings ADD COLUMN vision_score INTEGER"
+                )
+            except Exception:
+                pass  # Column already exists
 
     # ── Listings ──────────────────────────────────────────────────────────
 
@@ -185,6 +193,14 @@ class Database:
             conn.execute(
                 "UPDATE listings SET last_seen = ? WHERE id = ? AND platform = ?",
                 (datetime.utcnow().isoformat(), listing_id, platform),
+            )
+
+    def update_vision_score(self, listing_id: str, platform: str, score: int) -> None:
+        """Store the GPT-4o vision score for a listing."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE listings SET vision_score = ? WHERE id = ? AND platform = ?",
+                (score, listing_id, platform),
             )
 
     # ── Bookmarks ──────────────────────────────────────────────────────────

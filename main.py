@@ -35,7 +35,7 @@ from dashboard import init as dashboard_init
 from db import Database
 from notifications import EmailAlert, PushAlert, SMSAlert
 from scrapers import SCRAPER_REGISTRY
-from utils import CurrencyConverter, KeywordAIExpander, KeywordSuggester, ProxyManager, Translator
+from utils import CurrencyConverter, KeywordAIExpander, KeywordSuggester, ProxyManager, Translator, VisionFilter
 
 # ── Logging setup ─────────────────────────────────────────────────────────────
 
@@ -115,6 +115,7 @@ async def _scan_job(
     scraper,
     notifications: list,
     stats_store: dict,
+    vision_filter=None,
 ) -> None:
     """
     Single scheduled scan cycle for one platform.
@@ -128,7 +129,7 @@ async def _scan_job(
 
     start = datetime.utcnow()
     try:
-        count = await scraper.run(notifications)
+        count = await scraper.run(notifications, vision_filter=vision_filter)
         stats_store[platform_name]["last_run"] = start.strftime("%H:%M:%S")
         stats_store[platform_name]["new_found"] += count
         stats_store[platform_name]["status"] = "OK"
@@ -162,6 +163,7 @@ async def main(args) -> None:
     proxy = ProxyManager(config)
     keyword_expander = KeywordAIExpander(config, translator)
     keyword_suggester = KeywordSuggester(config, translator)
+    vision_filter = VisionFilter(config)
 
     # Pre-warm currency rates
     await fx._get_rates()
@@ -210,7 +212,7 @@ async def main(args) -> None:
     if args.once:
         console.print("[dim]Running all scrapers once…[/dim]")
         tasks = [
-            _scan_job(name, scraper, notifications, stats_store)
+            _scan_job(name, scraper, notifications, stats_store, vision_filter)
             for name, scraper in scrapers.items()
         ]
         await asyncio.gather(*tasks)
@@ -234,7 +236,7 @@ async def main(args) -> None:
         scheduler.add_job(
             _scan_job,
             trigger=IntervalTrigger(seconds=interval),
-            args=[name, scraper, notifications, stats_store],
+            args=[name, scraper, notifications, stats_store, vision_filter],
             id=f"scan_{name}",
             next_run_time=datetime.utcnow() + timedelta(seconds=offset_idx * 8),
             max_instances=1,
