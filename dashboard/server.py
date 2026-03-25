@@ -110,11 +110,46 @@ _COUNTRY_META = {
     "vestiaire": {"lat": 48.8566, "lng":   2.3522, "name": "Vestiaire",   "flag": "✦"},
 }
 
-# NL VAT: 21% on all items, no import duty threshold
-def _nl_landed(price_eur: float) -> float:
+# ── Shipping costs per platform (EUR, NL destination) ─────────────────────────
+_SHIPPING_COSTS: dict = {
+    "mercari_jp":     20.0,   # Japan → NL tracked parcel
+    "yahoo_auctions": 20.0,
+    "rakuma":         20.0,
+    "bunjang":        20.0,   # Korea → NL (similar distance to Japan)
+    "xianyu":         25.0,   # China → NL
+    "vinted":         25.0,   # EU → NL buyer protection + platform shipping
+    "vestiaire":      25.0,
+}
+
+
+def _cost_breakdown(listing: dict) -> dict:
+    """
+    Return full landed cost breakdown for a listing.
+
+    Fields:
+      shipping_cost  — flat rate per platform region (EUR)
+      vat_amount     — 21% NL VAT on list price only
+      total_landed   — price_eur + vat_amount + shipping_cost
+      price_eur_nl   — legacy field (price + VAT, no shipping) kept for compat
+    """
+    price_eur = listing.get("price_eur")
     if price_eur is None:
-        return None
-    return round(price_eur * 1.21, 2)
+        return {
+            "shipping_cost": None,
+            "vat_amount":    None,
+            "total_landed":  None,
+            "price_eur_nl":  None,
+        }
+    platform  = listing.get("platform", "")
+    shipping  = _SHIPPING_COSTS.get(platform, 20.0)
+    vat       = round(price_eur * 0.21, 2)
+    total     = round(price_eur + vat + shipping, 2)
+    return {
+        "shipping_cost": shipping,
+        "vat_amount":    vat,
+        "total_landed":  total,
+        "price_eur_nl":  round(price_eur + vat, 2),   # legacy
+    }
 
 
 @app.get("/api/globe-data")
@@ -202,7 +237,7 @@ async def api_listings(
     listings = []
     for r in rows:
         d = dict(r)
-        d["price_eur_nl"] = _nl_landed(d.get("price_eur"))
+        d.update(_cost_breakdown(d))
         listings.append(d)
 
     return {"listings": listings, "total": total, "offset": offset, "limit": limit}
@@ -229,7 +264,7 @@ async def api_get_bookmarks():
         return {"listings": [], "total": 0}
     listings = _db.get_bookmarks()
     for d in listings:
-        d["price_eur_nl"] = _nl_landed(d.get("price_eur"))
+        d.update(_cost_breakdown(d))
     return {"listings": listings, "total": len(listings)}
 
 
