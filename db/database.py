@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS listings (
     is_suspicious    INTEGER NOT NULL DEFAULT 0,-- 1 = suspiciously cheap
     bookmarked       INTEGER NOT NULL DEFAULT 0,-- 1 = bookmarked by user
     vision_score     INTEGER,                   -- GPT-4o image match score 0-100 (NULL = not checked)
+    auction_ends_at  TEXT,                      -- ISO-8601 UTC timestamp (Yahoo auctions only)
     first_seen       TEXT    NOT NULL,          -- ISO-8601 timestamp
     last_seen        TEXT    NOT NULL,          -- ISO-8601 timestamp
     PRIMARY KEY (id, platform)
@@ -134,6 +135,13 @@ class Database:
                 )
             except Exception:
                 pass  # Column already exists
+            # Migration: add auction_ends_at column to existing DBs
+            try:
+                conn.execute(
+                    "ALTER TABLE listings ADD COLUMN auction_ends_at TEXT"
+                )
+            except Exception:
+                pass  # Column already exists
 
     # ── Listings ──────────────────────────────────────────────────────────
 
@@ -194,6 +202,43 @@ class Database:
                 "UPDATE listings SET last_seen = ? WHERE id = ? AND platform = ?",
                 (datetime.utcnow().isoformat(), listing_id, platform),
             )
+
+    def update_auction_end(self, listing_id: str, platform: str, ends_at: str) -> None:
+        """Store (or refresh) the auction end time for a Yahoo listing."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE listings SET auction_ends_at = ? WHERE id = ? AND platform = ?",
+                (ends_at, listing_id, platform),
+            )
+
+    def get_auctions_ending_soon(self, within_minutes: int = 15) -> list[dict]:
+        """
+        Return Yahoo auction listings whose end time is within *within_minutes*
+        from now and for which we haven't sent a snipe alert yet.
+        """
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()
+        cutoff = (now + timedelta(minutes=within_minutes)).isoformat()
+        with self._conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT l.* FROM listings l
+                WHERE l.platform = 'yahoo_auctions'
+                  AND l.auction_ends_at IS NOT NULL
+                  AND l.auction_ends_at <= ?
+                  AND l.auction_ends_at > ?
+                  AND NOT EXISTS (
+                      SELECT 1 FROM alerts a
+                      WHERE a.listing_id = l.id
+                        AND a.platform   = l.platform
+                        AND a.channel    = 'telegram_snipe'
+                        AND a.success    = 1
+                  )
+                ORDER BY l.auction_ends_at ASC
+                """,
+                (cutoff, now.isoformat()),
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     def update_vision_score(self, listing_id: str, platform: str, score: int) -> None:
         """Store the GPT-4o vision score for a listing."""

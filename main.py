@@ -110,6 +110,58 @@ def load_config(path: str) -> dict:
 
 # ─── Scan job ─────────────────────────────────────────────────────────────────
 
+async def _snipe_check_job(db, telegram, stats_store: dict) -> None:
+    """
+    Runs every 5 minutes.  Finds Yahoo auctions ending within 15 minutes
+    whose current price is under the keyword group's ceiling, and fires a
+    Telegram snipe alert with a countdown.
+    """
+    try:
+        ending = db.get_auctions_ending_soon(within_minutes=15)
+        for listing in ending:
+            await _send_snipe_alert(listing, db, telegram)
+    except Exception as exc:
+        logger.error(f"[snipe_check] Error: {exc}", exc_info=True)
+
+
+async def _send_snipe_alert(listing: dict, db, telegram) -> None:
+    from datetime import datetime, timezone
+    ends_iso = listing.get("auction_ends_at", "")
+    try:
+        ends_dt = datetime.fromisoformat(ends_iso)
+        now = datetime.now(timezone.utc)
+        mins_left = max(0, int((ends_dt - now).total_seconds() / 60))
+    except Exception:
+        mins_left = "?"
+
+    title = listing.get("translated_title") or listing.get("title", "—")
+    price_eur = listing.get("price_eur")
+    url = listing.get("url", "")
+    platform = listing.get("platform", "yahoo_auctions")
+
+    price_str = f"€{price_eur:.0f}" if price_eur else "—"
+    logger.info(f"[snipe] ⏰ {listing['id']} — {mins_left}min left — {price_str}")
+
+    if telegram and telegram.enabled:
+        # Build a plain snipe alert message using telegram's internal _call
+        from notifications.telegram_alert import _esc
+        text = (
+            f"⏰ *SNIPE ALERT — {mins_left} min left\\!*\n"
+            f"\n"
+            f"🇯🇵 *{_esc(title)}*\n"
+            f"💰 {_esc(price_str)}\n"
+            f"🔗 [Open on Yahoo Auctions]({url})"
+        )
+        result = await telegram._call("sendMessage", {
+            "chat_id": telegram._chat_id,
+            "text": text,
+            "parse_mode": "MarkdownV2",
+            "disable_web_page_preview": False,
+        })
+        ok = bool(result and result.get("ok"))
+        db.log_alert(listing["id"], platform, "telegram_snipe", success=ok)
+
+
 async def _scan_job(
     platform_name: str,
     scraper,
@@ -245,6 +297,18 @@ async def main(args) -> None:
             coalesce=True,
         )
         logger.info(f"[{name}] Scheduled every {interval}s (first run in {offset_idx * 8}s)")
+
+    # ── Snipe check — every 5 minutes ─────────────────────────────────
+    scheduler.add_job(
+        _snipe_check_job,
+        trigger=IntervalTrigger(seconds=300),
+        args=[db, telegram, stats_store],
+        id="snipe_check",
+        next_run_time=datetime.utcnow() + timedelta(seconds=30),
+        max_instances=1,
+        coalesce=True,
+    )
+    logger.info("[snipe_check] Scheduled every 5min")
 
     scheduler.start()
 

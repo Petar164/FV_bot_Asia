@@ -18,6 +18,7 @@ Note: BuyNow (即決) and Auction listings are mixed — we capture both.
 import asyncio
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Optional
 from urllib.parse import quote_plus
 
@@ -142,6 +143,14 @@ class YahooAuctionsScraper(BaseScraper):
             cond_el = item.select_one(".Product__condition")
             condition = cond_el.get_text(strip=True) if cond_el else None
 
+            # ── Auction end time ──────────────────────────────────────
+            # Yahoo renders end time in a <time> element or a data attribute
+            auction_ends_at = None
+            time_el = item.select_one("time.Product__time") or item.select_one("time[datetime]")
+            if time_el:
+                dt_raw = time_el.get("datetime") or time_el.get_text(strip=True)
+                auction_ends_at = self._parse_end_time(dt_raw)
+
             # ── Full listing URL ──────────────────────────────────────
             if href.startswith("http"):
                 full_url = href
@@ -161,6 +170,7 @@ class YahooAuctionsScraper(BaseScraper):
                 "condition": condition,
                 "keyword_group": keyword_group.get("group", ""),
                 "is_suspicious": False,
+                "auction_ends_at": auction_ends_at,
             }
 
         except Exception as exc:
@@ -175,3 +185,58 @@ class YahooAuctionsScraper(BaseScraper):
             return float(cleaned)
         except ValueError:
             return 0.0
+
+    @staticmethod
+    def _parse_end_time(raw: str) -> Optional[str]:
+        """
+        Try to parse a Yahoo end-time string into UTC ISO-8601.
+        Yahoo typically uses JST (UTC+9).  Accepted formats:
+          2024-05-01T23:00:00+09:00   (ISO with offset)
+          2024.05.01 23:00            (Yahoo legacy format, assume JST)
+        Returns ISO string in UTC, or None on failure.
+        """
+        if not raw:
+            return None
+        raw = raw.strip()
+        # Try ISO parse first
+        for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M%z"):
+            try:
+                dt = datetime.strptime(raw[:25], fmt)
+                return dt.astimezone(timezone.utc).isoformat()
+            except Exception:
+                pass
+        # Legacy Yahoo dot-separated format "2024.05.01 23:00" — assume JST
+        m = re.match(r"(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})", raw)
+        if m:
+            try:
+                from datetime import timedelta
+                y, mo, d, h, mi = (int(x) for x in m.groups())
+                dt_jst = datetime(y, mo, d, h, mi, tzinfo=timezone(timedelta(hours=9)))
+                return dt_jst.astimezone(timezone.utc).isoformat()
+            except Exception:
+                pass
+        return None
+
+    async def process_listings(self, raw_listings: list[dict], keyword_group: dict) -> list[dict]:
+        """
+        Extend base processing: persist auction_ends_at for every Yahoo listing
+        (both new and already-known), so the snipe checker always has fresh times.
+        """
+        # First, update end times for all listings (including already-seen ones)
+        for listing in raw_listings:
+            ends_at = listing.get("auction_ends_at")
+            if ends_at:
+                lid = listing.get("id")
+                if lid and self.db.listing_exists(lid, self.PLATFORM):
+                    self.db.update_auction_end(lid, self.PLATFORM, ends_at)
+
+        # Then run normal base processing (dedup, translate, FX, notify)
+        new_listings = await super().process_listings(raw_listings, keyword_group)
+
+        # Persist end times for freshly inserted listings too
+        for listing in new_listings:
+            ends_at = listing.get("auction_ends_at")
+            if ends_at:
+                self.db.update_auction_end(listing["id"], self.PLATFORM, ends_at)
+
+        return new_listings
