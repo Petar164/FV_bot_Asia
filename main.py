@@ -33,7 +33,7 @@ from rich.console import Console
 from dashboard import app as dashboard_app
 from dashboard import init as dashboard_init
 from db import Database
-from notifications import EmailAlert, PushAlert, SMSAlert
+from notifications import EmailAlert, PushAlert, SMSAlert, TelegramAlert
 from scrapers import SCRAPER_REGISTRY
 from utils import CurrencyConverter, KeywordAIExpander, KeywordSuggester, ProxyManager, Translator, VisionFilter
 
@@ -169,10 +169,12 @@ async def main(args) -> None:
     await fx._get_rates()
 
     # ── Notification channels ─────────────────────────────────────────
+    telegram = TelegramAlert(config, db)
     notifications = [
         EmailAlert(config, db),
         SMSAlert(config, db),
         PushAlert(config, db),
+        telegram,
     ]
 
     # ── Scraper instances ─────────────────────────────────────────────
@@ -261,6 +263,11 @@ async def main(args) -> None:
         webbrowser.open(url)
 
     asyncio.ensure_future(_open_browser())
+
+    # ── Telegram command polling (no-op if not configured) ────────────
+    asyncio.ensure_future(
+        telegram.start_polling(run_gate, scheduler=scheduler, stats_store=stats_store)
+    )
 
     # ── uvicorn web server (runs until Ctrl+C) ────────────────────────
     cfg = uvicorn.Config(
