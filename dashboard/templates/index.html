@@ -319,6 +319,7 @@
       grid-area: rs;
       background: var(--surface); border-left:1px solid var(--border);
       display:flex; flex-direction:column; overflow:hidden;
+      min-width: 0;
     }
     #rs-hd {
       padding:16px 18px 12px; border-bottom:1px solid var(--border);
@@ -1288,8 +1289,10 @@ async function openCountry(d) {
 }
 function closeRight() {
   activeCountry=null;
+  const rs=document.getElementById('rs');
+  rs.style.borderLeft='none';
   document.getElementById('shell').classList.remove('rs-open');
-  setTimeout(()=>{ document.getElementById('rs').style.display='none'; },420);
+  setTimeout(()=>{ rs.style.display='none'; rs.style.borderLeft=''; },420);
 }
 const _PAGE=80;
 let _listOffset=0, _listTotal=0;
@@ -1328,11 +1331,14 @@ function rowHTML(l) {
   const s=l.is_suspicious===1||l.is_suspicious===true;
   const bm=l.bookmarked===1||l.bookmarked===true;
   const eur=l.price_eur!=null?`€${Math.round(l.price_eur).toLocaleString()}`:'—';
-  const vat=l.price_eur_nl!=null?`€${Math.round(l.price_eur_nl).toLocaleString()}`:'—';
+  const landed=l.total_landed!=null?`€${Math.round(l.total_landed).toLocaleString()}`:'—';
+  const ship=l.shipping_cost!=null?`+€${l.shipping_cost} ship`:'';
   const op=l.price&&l.currency?`${Math.round(l.price).toLocaleString()} ${l.currency}`:'';
   const ti=l.translated_title||l.title||'—';
   const ot=(l.translated_title&&l.title&&l.translated_title!==l.title)?l.title:'';
   const pl=(l.platform||'').replace(/_/g,' ').toUpperCase();
+  const ds=l.deal_score!=null?l.deal_score:null;
+  const dsColor=ds==null?'#555':ds>=70?'#4caf50':ds>=45?'#ff9800':'#f44336';
   const img=l.image_url
     ?`<img class="lr-img" src="${x(l.image_url)}" loading="lazy" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="lr-ph" style="display:none">—</div>`
     :`<div class="lr-ph">—</div>`;
@@ -1346,9 +1352,10 @@ function rowHTML(l) {
       <div class="lr-bot">
         <div class="lr-prices">
           <div class="lr-eur">${eur}${op?`<span class="lr-op">${x(op)}</span>`:''}</div>
-          <div class="lr-vat"><span class="lr-vl">+21% VAT</span>${vat}</div>
+          <div class="lr-vat"><span class="lr-vl">+21% VAT ${ship}</span>${landed}</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px">
+          ${ds!=null?`<span style="font-size:10px;font-weight:700;color:${dsColor};letter-spacing:.5px">${ds}</span>`:''}
           <button class="bm-btn${bm?' saved':''}" data-id="${eid}" data-pl="${epl}" onclick="event.preventDefault();event.stopPropagation();toggleBM(this,'${eid.replace(/'/g,'\\x27')}','${epl.replace(/'/g,'\\x27')}')" title="${bm?'Remove bookmark':'Save listing'}">${bm?'&#x2665;':'&#x2661;'}</button>
           <div class="lr-lnk">View &#x2192;</div>
         </div>
