@@ -187,6 +187,17 @@ class BaseScraper(ABC):
                 self.db.update_last_seen(lid, platform)
                 continue
 
+            # ── must_contain relevance filter ─────────────────────────
+            must = keyword_group.get("must_contain", [])
+            if must:
+                title_check = (listing.get("title") or "").lower()
+                if not any(m.lower() in title_check for m in must):
+                    logger.debug(
+                        f"[{self.PLATFORM}] Filtered out {lid} — "
+                        f"title does not contain any must_contain term"
+                    )
+                    continue
+
             # ── Currency conversion ───────────────────────────────────
             try:
                 price_eur = await self.fx.convert(
