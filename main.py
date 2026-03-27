@@ -33,7 +33,7 @@ from rich.console import Console
 from dashboard import app as dashboard_app
 from dashboard import init as dashboard_init
 from db import Database
-from notifications import EmailAlert, PushAlert, SMSAlert, TelegramAlert
+from notifications import TelegramAlert
 from scrapers import SCRAPER_REGISTRY
 from utils import CurrencyConverter, KeywordAIExpander, KeywordSuggester, ProxyManager, Translator, VisionFilter
 
@@ -222,12 +222,7 @@ async def main(args) -> None:
 
     # ── Notification channels ─────────────────────────────────────────
     telegram = TelegramAlert(config, db)
-    notifications = [
-        EmailAlert(config, db),
-        SMSAlert(config, db),
-        PushAlert(config, db),
-        telegram,
-    ]
+    notifications = [telegram]
 
     # ── Scraper instances ─────────────────────────────────────────────
     # Collect all platforms referenced across keyword groups
